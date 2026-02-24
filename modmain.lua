@@ -385,10 +385,44 @@ end
 
 AddComponentPostInit("inventory", ReallyFull)
 
+-- Load LLM components (deferred to avoid nil module error during safestartup)
+local function LoadLLMComponents()
+    print("[modmain] Loading LLM components...")
+    local llm_state_exporter = GLOBAL.require "components/llm_state_exporter"
+    -- TODO local llm_action_executor = GLOBAL.require "components/llm_action_executor"
+
+    print("[modmain] LLM components loaded successfully")
+
+    -- TODO return llm_state_exporter, llm_action_executor
+    return llm_state_exporter
+end
+
+local LLMStateExporter
+-- TODO Add LLM Action Executor -- local LLMStateExporter, LLMActionExecutor
+
 -- New components that have OnLoad need to be loaded early!
 local function AddNewComponents(player)
+    print("[modmain] AddNewComponents() called for player: " .. tostring(player.name))
+
     player:AddComponent("prioritizer")
     -- player:AddComponent("cartographer")
     player:AddComponent("chef")
     -- player:AddTag("debugPrint")
+
+    -- -- Load LLM components on first use
+    -- if not LLMStateExporter then
+    --     LLMStateExporter, LLMActionExecutor = LoadLLMComponents()
+    -- end
+
+    print("[modmain] Adding llm_state_exporter component...")
+
+    player:AddComponent("llm_state_exporter")
+    -- TODO player:AddComponent("llm_action_executor")
+
+    print("[modmain] Components added successfully")
+
+    -- player:AddTag("debugPrint")
 end
+
+-- Use AddPrefabPostInit directly to avoid strict mode issues with AddPlayerPostInit
+AddPrefabPostInit("wilson", AddNewComponents)
