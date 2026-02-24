@@ -1,2 +1,4 @@
 .github/local_instructions/*
 .github/instructions/instructions.md
+*_DRAFT.md
+state/*.json
