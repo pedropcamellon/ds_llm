@@ -85,10 +85,12 @@ function StateGatherer.GetInventory(player)
         for _, item in ipairs(items) do
             if item and item.prefab then
                 local prefab = item.prefab
+                -- Use stack size if the item is stackable, otherwise count as 1
+                local stack = (item.components.stackable and item.components.stackable.stacksize) or 1
                 if item_counts[prefab] then
-                    item_counts[prefab] = item_counts[prefab] + 1
+                    item_counts[prefab] = item_counts[prefab] + stack
                 else
-                    item_counts[prefab] = 1
+                    item_counts[prefab] = stack
                 end
             end
         end
