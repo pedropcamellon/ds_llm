@@ -3,40 +3,59 @@
 > Important — DS runs in a sandboxed Lua 5.1. Most of `io.*` and `os.*` are
 > restricted. The methods below are what actually works.
 
-## Reading a File
+## `io.open` for mod-local files
+
+Use `io.open` with paths **relative to the game executable**
+(`D:\Games\Dont Starve v429404\`). This is the only reliable cross-platform
+method for writing files that an external process (e.g. a Python agent in the
+mod folder) can read.
 
 ```lua
--- TheSim:GetPersistentString reads from the save directory
--- Path is relative to the Klei save folder, NOT the mod folder
-TheSim:GetPersistentString("ds_llm/state/game_state.json", function(success, data)
-    if success and data and data ~= "" then
-        -- data is the raw file contents (string)
-        local ok, decoded = pcall(json.decode, data)
-        if ok then
-            -- use decoded table
-        end
-    end
-end)
+-- Writing
+local f = io.open("../mods/ds_llm/state/game_state.json", "w")
+if f then
+    f:write(json_string)
+    f:close()
+else
+    print("[ERROR] Failed to open file for writing")
+end
+
+-- Reading
+local f = io.open("../mods/ds_llm/state/game_state.json", "r")
+if f then
+    local contents = f:read("*a")
+    f:close()
+    local ok, data = pcall(json.decode, contents)
+end
 ```
 
-## Writing a File
+### Path convention
+
+| Who writes | Path used | Physical location |
+|---|---|---|
+| Lua (`io.open`) | `"../mods/ds_llm/state/game_state.json"` | `<game_exe>/../mods/ds_llm/state/` |
+| Python (`Path(__file__)`) | `Path(__file__).resolve().parent.parent / "state"` | Same folder |
+
+Paths in `io.open` are relative to the game `.exe`, not the mod folder.
+`../mods/ds_llm/` navigates from `<game_dir>/` up one level to `<game_dir>/../`
+which is the parent of the game dir — so the full chain is:
+`<game_dir>/../mods/ds_llm/state/`. Adjust if installation differs.
+
+## ❌ Why NOT `TheSim:SetPersistentString`
+
+`TheSim` writes to `%USERPROFILE%\Documents\Klei\DoNotStarve\` — a completely
+different tree from the mod folder. An external Python agent cannot reliably
+locate this path across machines or on Linux/Steam Deck.
 
 ```lua
--- TheSim:SetPersistentString writes to the same directory
-local encoded = json.encode(my_table)
-TheSim:SetPersistentString("ds_llm/state/game_state.json", encoded, false, function()
-    -- optional callback when write completes (may be async)
-end)
+-- DO NOT USE for inter-process bridge files
+TheSim:SetPersistentString("key", data, false, callback)
+TheSim:GetPersistentString("key", callback)
+-- Writes to: %USERPROFILE%\Documents\Klei\DoNotStarve\<key>
 ```
 
-## Actual Paths on Disk
-
-| Lua path argument                | Windows physical path                                                   |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| `"ds_llm/state/game_state.json"` | `%USERPROFILE%\Documents\Klei\DoNotStarve\ds_llm\state\game_state.json` |
-
-> The Python agent reads/writes the same physical path. Make sure both sides
-> agree on the exact filename.
+Use `TheSim` only for game save data that never needs to be read outside the
+DS process.
 
 ## JSON Encoding/Decoding
 
