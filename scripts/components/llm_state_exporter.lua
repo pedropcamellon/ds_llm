@@ -130,11 +130,12 @@ function LLMStateExporter:ExportGameState()
         local json_str = JSONUtils.Encode(state)
 
         local f = io.open(self.state_file, "w")
+
         if f then
             f:write(json_str)
             f:close()
         else
-            print("[ERROR] [LLMStateExporter] Failed to open state file: " .. self.state_file)
+            print("[ERROR] [LLMStateExporter] Failed to open: " .. self.state_file)
         end
     end)
 

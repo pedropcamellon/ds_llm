@@ -14,22 +14,31 @@ local MemoryLogger = Class(function(self, memory_file, max_entries)
 end)
 
 function MemoryLogger:Load()
-    -- Try to load existing memory from file
-    local success, result = pcall(function()
+    local success, err = pcall(function()
         local f = io.open(self.memory_file, "r")
-        if f then
-            local memory_json = f:read("*a")
-            f:close()
-            print("[MemoryLogger] Loaded existing memory file")
-            return memory_json
+        if not f then
+            print("[MemoryLogger] No existing memory file found")
+            return
         end
-        print("[MemoryLogger] No existing memory file found")
-        return nil
+        local count = 0
+        for line in f:lines() do
+            if line ~= "" then
+                local ok, entry = pcall(json.decode, line)
+                if ok and type(entry) == "table" then
+                    table.insert(self.memory_log, entry)
+                    count = count + 1
+                end
+            end
+        end
+        f:close()
+        -- Trim to max entries
+        while #self.memory_log > self.max_memory_entries do
+            table.remove(self.memory_log, 1)
+        end
+        print("[MemoryLogger] Loaded " .. count .. " entries from " .. self.memory_file)
     end)
-
     if not success then
-        print("[ERROR] [MemoryLogger] Load error: " .. tostring(result))
-        return
+        print("[ERROR] [MemoryLogger] Load error: " .. tostring(err))
     end
 end
 
@@ -53,17 +62,16 @@ function MemoryLogger:Add(text)
         table.remove(self.memory_log, 1)
     end
 
-    -- Append to file - gracefully handle write failures
+    -- Append to file
     local success = pcall(function()
         local f = io.open(self.memory_file, "a")
         if f then
             f:write(JSONUtils.Encode(entry) .. "\n")
             f:close()
         else
-            print("[ERROR] [MemoryLogger] Failed to open file: " .. self.memory_file)
+            print("[ERROR] [MemoryLogger] Failed to open: " .. self.memory_file)
         end
     end)
-
     if not success then
         print("[ERROR] [MemoryLogger] Write error - data still in RAM")
     end
