@@ -44,14 +44,9 @@ end
 
 function MemoryLogger:Add(text)
     local clock = GetClock()
-    if not clock then
-        print("[MemoryLogger] Add() failed: GetClock() is nil")
-        return
-    end
-
     local entry = {
-        timestamp = clock:GetDayTime(),
-        day = clock:GetDay(),
+        timestamp = clock and clock:GetDayTime() or 0,
+        day = clock and clock:GetDay() or 0,
         text = text
     }
 

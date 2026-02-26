@@ -26,13 +26,40 @@ local LLMStateExporter = Class(function(self, inst)
     -- Initialize sub-modules
     self.memory = MemoryLogger(self.memory_file, 20)
 
-    -- Track last action for export
-    self.last_action_result = "idle"
-    self.last_action_reason = ""
+    -- Transient event buffers — accumulate between exports, flushed each cycle
+    self.pending_speech   = {}  -- speech bubbles since last export
+    self.pending_actions  = {}  -- action results since last export
 
     -- Register for updates
     self.inst:StartUpdatingComponent(self)
     print("[LLMStateExporter] Component registered for updates")
+
+    -- Hook talker component for real game feedback (speech bubbles)
+    -- ontalk fires before each Say() call with the raw script string
+    pcall(function()
+        if self.inst.components.talker then
+            local orig_ontalk = self.inst.components.talker.ontalk
+            self.inst.components.talker.ontalk = function(talker_inst, script)
+                -- Wrap in pcall so any error here never aborts Say() / kills the speech bubble
+                pcall(function()
+                    local text = ""
+                    if type(script) == "string" then
+                        text = script
+                    elseif type(script) == "table" and script[1] then
+                        text = script[1].message or ""
+                    end
+                    if text ~= "" then
+                        table.insert(self.pending_speech, text)
+                        self.memory:Add("Wilson said: " .. text)
+                    end
+                end)
+                if orig_ontalk then orig_ontalk(talker_inst, script) end
+            end
+            print("[LLMStateExporter] talker.ontalk hooked")
+        else
+            print("[LLMStateExporter] WARNING: talker component not found yet")
+        end
+    end)
 
     -- Listen for important events
     self.inst:ListenForEvent("actionsuccess", function(inst, data)
@@ -56,8 +83,8 @@ end)
 function LLMStateExporter:OnActionSuccess(data)
     local success = pcall(function()
         if data and data.action then
-            self.last_action_result = "success"
-            self.last_action_reason = "Action completed: " .. tostring(data.action)
+            local entry = {result="success", action=tostring(data.action)}
+            table.insert(self.pending_actions, entry)
             self.memory:Add("Action succeeded: " .. tostring(data.action))
         end
     end)
@@ -66,8 +93,8 @@ end
 function LLMStateExporter:OnActionFailed(data)
     local success = pcall(function()
         if data and data.action then
-            self.last_action_result = "failed"
-            self.last_action_reason = "Action failed: " .. (data.reason or "unknown")
+            local entry = {result="failed", action=tostring(data.action), reason=data.reason or "unknown"}
+            table.insert(self.pending_actions, entry)
             self.memory:Add("Action failed: " .. tostring(data.action))
         end
     end)
@@ -121,10 +148,14 @@ function LLMStateExporter:ExportGameState()
             nearby_entities = nearby_entities,
             threats = threats,
             position = position,
-            last_action_result = self.last_action_result,
-            last_action_reason = self.last_action_reason,
-            memory_log = self.memory:GetRecent(10)
+            -- Flush transient buffers: all events since last export
+            speech_log    = self.pending_speech,
+            action_log    = self.pending_actions,
+            memory_log    = self.memory:GetRecent(10)
         }
+        -- Clear buffers after flushing into state
+        self.pending_speech  = {}
+        self.pending_actions = {}
 
         -- Write to JSON file using JSONUtils
         local json_str = JSONUtils.Encode(state)
