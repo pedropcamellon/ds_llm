@@ -90,6 +90,8 @@ or confirm the BT's current action via `action_command.json`.
 - Run with: `cd agent && uv run main.py --model gemma3:1b --interval 5`
 - HTTP calls use `httpx` (not `requests`). Exceptions: `httpx.TimeoutException`, `httpx.ConnectError`, `httpx.HTTPError`.
 - Type hints use built-in generics (`dict`, `list[dict]`, `str | None`) — no `typing.Dict/List/Optional`.
+- Use **`dataclasses`** for internal data structures passed between agent modules (e.g. parsed action, state snapshot).
+- Use **`pydantic`** for validating data from risky/external sources: Ollama API responses, `game_state.json` reads, `action_command.json` writes. Pydantic gives clear field-level errors and safe defaults when the LLM or Lua produces malformed output.
 - Emergency hard-coded overrides (health < 20, threats, nightfall) fire **before**
   the LLM is called — keep fast-path logic in `DSAIAgent.decide()`, not in the prompt.
 
