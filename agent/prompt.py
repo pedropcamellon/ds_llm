@@ -24,10 +24,10 @@ CRITICAL_THRESHOLD = 50  # Health/hunger/sanity below this = urgent action requi
 
 # Crafting recipes: item -> {ingredient: count}
 RECIPES: dict[str, dict[str, int]] = {
-    "axe":      {"twig": 1, "flint": 1},
-    "pickaxe":  {"twig": 2, "flint": 2},
+    "axe": {"twig": 1, "flint": 1},
+    "pickaxe": {"twig": 2, "flint": 2},
     "campfire": {"log": 2, "cutgrass": 2},
-    "torch":    {"twig": 2, "cutgrass": 2},
+    "torch": {"twig": 2, "cutgrass": 2},
 }
 
 
@@ -51,12 +51,17 @@ def _prerequisites_section(inv: dict[str, int]) -> str:
     has_axe = "axe" in inv
     has_pickaxe = "pickaxe" in inv
 
-    lines.append(f"  axe: {'✓ have it' if has_axe else '✗ missing — craft_item:axe needs 1 twig + 1 flint'}")
-    lines.append(f"  pickaxe: {'✓ have it' if has_pickaxe else '✗ missing — craft_item:pickaxe needs 2 twig + 2 flint'}")
+    lines.append(
+        f"  axe: {'✓ have it' if has_axe else '✗ missing — craft_item:axe needs 1 twig + 1 flint'}"
+    )
+    lines.append(
+        f"  pickaxe: {'✓ have it' if has_pickaxe else '✗ missing — craft_item:pickaxe needs 2 twig + 2 flint'}"
+    )
 
     # What the player can craft right now
     craftable = [
-        name for name, recipe in RECIPES.items()
+        name
+        for name, recipe in RECIPES.items()
         if all(inv.get(ing, 0) >= qty for ing, qty in recipe.items())
     ]
     if craftable:
@@ -70,19 +75,22 @@ def _prerequisites_section(inv: dict[str, int]) -> str:
 
     return "\n".join(lines)
 
-SYSTEM_RULES = """You are Wilson in Don't Starve. You must survive by gathering resources, cooking food, and managing your health.
 
-CRITICAL RULES:
-- DARKNESS KILLS YOU. Always have a fire before night or you die.
-- Stats below 50 are CRITICAL and require immediate action. Stats above 50 are safe — do not waste food or resources.
-- Hunger max is 150. Only eat if hunger < 50. Eating at 119/150 is wasteful.
-- Health max is 100. Only heal if health < 50.
-- Sanity max is 200. Only address sanity if sanity < 50.
+SYSTEM_RULES = """Survive in the wild. Act only on CRITICAL stats (< 50). Priority order:
+- Threats nearby → run_from_enemy
+- Night (time > 0.75) + no light → craft_item:torch or campfire
+- Any stat < 50 → address it
 - Build tools (axe, pickaxe) to gather resources efficiently.
-- Seasons change: autumn (safe) → winter (cold, scarce food) → spring (rain) → summer (heat)"""
+- Seasons change: autumn (safe) → winter (cold, scarce food) → spring (rain) → summer (heat)
+- Missing axe → craft_item:axe (needs 1 twig + 1 flint) or gather ingredients
+- Have axe → chop_tree
+- Otherwise → explore
+"""
 
 
-def build_prompt(state: dict, memory: list[dict], inv: dict[str, int] | None = None) -> str:
+def build_prompt(
+    state: dict, memory: list[dict], inv: dict[str, int] | None = None
+) -> str:
     """Build the full LLM prompt from current game state and recent memory.
 
     Args:
@@ -92,17 +100,17 @@ def build_prompt(state: dict, memory: list[dict], inv: dict[str, int] | None = N
     """
 
     # Recent memory — prefer inventory/event entries first, then llm_reason
-    memory_context = ""
+    memory_lines = ""
     if memory:
-        memory_context = "Recent events:\n"
         for entry in memory[-8:]:
-            memory_context += f"  - [{entry.get('source', 'event')}] {entry['text']}\n"
+            memory_lines += f"  - [{entry.get('source', 'event')}] {entry['text']}\n"
 
     # Threat summary
-    threat_summary = ""
+    threat_lines = ""
     if state.get("threats"):
-        threat_summary = (
-            f"⚠️ THREATS NEARBY: {', '.join(t['name'] for t in state['threats'])}\n"
+        threat_lines = "\n".join(
+            f"  ⚠ {t['name']} ({t.get('type', '?')}) at {t['distance']}m"
+            for t in state["threats"]
         )
 
     # Critical stat warnings
@@ -113,51 +121,53 @@ def build_prompt(state: dict, memory: list[dict], inv: dict[str, int] | None = N
         except (TypeError, ValueError):
             return f"{value}/{max_value}"
 
-    # Inventory — truncate if too long
+    # Inventory — compact single line using parsed counts
     inv = inv if inv is not None else _parse_inv(state)
-    inventory_str = ", ".join(state.get("inventory", ["empty"]))
-    if len(inventory_str) > 200:
-        inventory_str = inventory_str[:197] + "..."
+    inv_line = (
+        ", ".join(
+            f"{name} x{count}" if count > 1 else name
+            for name, count in sorted(inv.items())
+        )
+        or "empty"
+    )
 
     prerequisites = _prerequisites_section(inv)
 
     # Nearby entities (top 5)
-    nearby_lines = "\n".join(
-        f"  • {e['name']} ({e['type']}) - {e['distance']}m away"
-        for e in state.get("nearby_entities", [])[:5]
-    )
-    nearby_header = (
-        "NEARBY ENTITIES:" if state.get("nearby_entities") else "No nearby entities"
+    nearby_lines = (
+        "\n".join(
+            f"  • {e['name']} ({e['type']}) - {e['distance']}m"
+            for e in state.get("nearby_entities", [])[:5]
+        )
+        or "  (none)"
     )
 
     action_list = ", ".join(ACTION_SPACE)
 
     return f"""{SYSTEM_RULES}
 
-CURRENT STATUS:
-- Day: {state.get("day", "?")}, Time: {state.get("time_of_day", 0):.2f} (0.75+ = dusk/night)
-- Season: {state.get("season", "unknown")}
-- Health: {stat_label(state.get("health"), 100)}
-- Hunger: {stat_label(state.get("hunger"), 150)}
-- Sanity: {stat_label(state.get("sanity"), 200)}
-- Position: ({state.get("position", {}).get("x", "?")}, {state.get("position", {}).get("z", "?")})
-- Equipped: {state.get("equipped", "nothing")}
-- Inventory: {inventory_str}
+[STATUS]
+  Day:{state.get("day", "?")} Time:{state.get("time_of_day", 0):.2f} Season:{state.get("season", "?")}
+  Health:{stat_label(state.get("health"), 100)} Hunger:{stat_label(state.get("hunger"), 150)} Sanity:{stat_label(state.get("sanity"), 200)}
+  Equipped:{state.get("equipped", "none")}
+[/STATUS]
 
-{nearby_header}
+[INVENTORY]
+  {inv_line}
+[/INVENTORY]
+
+[NEARBY]
 {nearby_lines}
+[/NEARBY]
 
-TOOLS & PREREQUISITES:
+[TOOLS]
 {prerequisites}
+[/TOOLS]
+{"[THREATS]" + chr(10) + threat_lines + chr(10) + "[/THREATS]" + chr(10) if threat_lines else ""}[MEMORY]
+{memory_lines.rstrip() or "  (none)"}
+[/MEMORY]
 
-{threat_summary}
-{memory_context}
-Your action options: {action_list}
+Actions: {action_list}
 
-IMPORTANT: Respond ONLY with valid JSON in this format:
-{{
-  "action": "action_name",
-  "reason": "Why you chose this action"
-}}
-
-Do NOT include any text outside the JSON."""
+Reply ONLY with JSON:
+{{"action":"action_name","reason":"why"}}"""
