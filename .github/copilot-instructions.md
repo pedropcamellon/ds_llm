@@ -45,10 +45,14 @@ llm_action_executor ◄─action_command.json──  │ parse JSON response
   "inventory": ["log x20", "axe"],   ← prefab + stack count
   "equipped", "position": {"x","z"},
   "nearby_entities": [{"name","type","distance"}],
-  "threats": [...], "last_action_result", "memory_log" }
+  "threats": [...],
+  "speech_log": ["Take that, nature!", "I don't have the right tools."],
+  "action_log": [{"result":"failed","action":"chop","reason":"no axe"}],
+  "memory_log" }
 ```
-Inventory items are formatted `"prefab x{count}"` (count >1 only) — the LLM
-uses this to decide whether a gather action is complete.
+`speech_log` and `action_log` are **accumulator buffers** — all events since the last export
+are collected in Lua lists and flushed into the JSON each cycle, then cleared. This ensures
+no transient event (speech bubble, action result) is lost between 5-second export intervals.
 
 ## State File Path
 
