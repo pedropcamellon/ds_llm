@@ -12,6 +12,7 @@ class StateReader:
         self.state_file = state_file
         self._last_hash: str | None = None
         self._last_day: int = -1
+        self._last_health: float = 100.0
 
     def read(self) -> dict | None:
         """Read and return the current game state, or None on failure."""
@@ -44,3 +45,12 @@ class StateReader:
             print("[StateReader] World reset detected!")
         self._last_day = current_day
         return reset
+
+    def is_game_over(self, state: dict) -> bool:
+        """Return True when Wilson's health just hit 0 (death transition)."""
+        health = float(state.get("health", 100))
+        dead = health <= 0 and self._last_health > 0
+        if dead:
+            print("[StateReader] Game over detected — Wilson died!")
+        self._last_health = health
+        return dead

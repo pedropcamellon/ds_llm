@@ -53,6 +53,12 @@ class DSAIAgent:
             print("[Agent] State unchanged, skipping decision")
             return None
 
+        if self.state_reader.is_game_over(state):
+            self.memory.clear()
+            self.memory.add("Wilson died. Cleared stale memory.", "system")
+            self.inventory_tracker.reset()
+            return self._emit({"action": "idle", "reason": "Game over — waiting for new world"})
+
         if self.state_reader.is_world_reset(state):
             self.memory.clear()
             self.memory.add("World reset! Starting fresh.", "system")
