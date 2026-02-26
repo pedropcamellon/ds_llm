@@ -58,9 +58,9 @@ no transient event (speech bubble, action result) is lost between 5-second expor
 
 Both processes share the `state/` folder inside the mod directory:
 
-| Side | Path |
-|------|------|
-| Lua (write) | `io.open("../mods/ds_llm/state/game_state.json", "w")` — relative to game exe |
+| Side          | Path                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| Lua (write)   | `io.open("../mods/ds_llm/state/game_state.json", "w")` — relative to game exe            |
 | Python (read) | `Path(__file__).resolve().parent.parent / "state"` — relative to `agent/` via `__file__` |
 
 `io.open` paths are relative to the game executable (`D:\Games\Dont Starve v429404\`).
@@ -85,51 +85,13 @@ or confirm the BT's current action via `action_command.json`.
   `DSAIAgent.decide()` and fire **before** the LLM call to keep latency low.
 - `llm_action_executor.lua` polling / dispatch is **not yet implemented**.
 
-## Python Agent Conventions
 
-- `agent/main.py` — CLI entrypoint only (argparse → `DSAIAgent.run()`)
-- `agent/llm_agent.py` — all I/O, state hashing, emergency overrides, Ollama calls
-- `agent/prompt.py` — pure prompt building: `build_prompt(state, memory) -> str`
-  and `ACTION_SPACE`, `SYSTEM_RULES` constants. Edit here to tune LLM behaviour.
-- Run with: `cd agent && uv run main.py --model gemma3:1b --interval 5`
-- HTTP calls use `httpx` (not `requests`). Exceptions: `httpx.TimeoutException`, `httpx.ConnectError`, `httpx.HTTPError`.
+## Rules
+
+- **Never use `state.get(key) or default` for critical fields.**
+  - Always extract required fields with a strict helper (see `goal_manager.py: _require_field`).
+  - If a required field is missing or None, raise an error, emit an idle/pause action, and warn the user to check the Lua exporter.
+  - Silent defaults (e.g. `health = state.get("health") or 100`) are dangerous: they can mask exporter bugs and cause the agent to act on wrong data.
 - Type hints use built-in generics (`dict`, `list[dict]`, `str | None`) — no `typing.Dict/List/Optional`.
 - Use **`dataclasses`** for internal data structures passed between agent modules (e.g. parsed action, state snapshot).
 - Use **`pydantic`** for validating data from risky/external sources: Ollama API responses, `game_state.json` reads, `action_command.json` writes. Pydantic gives clear field-level errors and safe defaults when the LLM or Lua produces malformed output.
-- Emergency hard-coded overrides (health < 20, threats, nightfall) fire **before**
-  the LLM is called — keep fast-path logic in `DSAIAgent.decide()`, not in the prompt.
-
-## Key File Map
-
-| Path                                         | Role                                                   |
-| -------------------------------------------- | ------------------------------------------------------ |
-| `modmain.lua`                                | Hook registration, HUD pulse, keyboard toggle (Ctrl+P) |
-| `scripts/brains/artificalwilson.lua`         | Behavior-tree brain (894 lines)                        |
-| `scripts/behaviours/*.lua`                   | Individual BT leaf nodes                               |
-| `scripts/components/llm_state_exporter.lua`  | Periodic JSON state writer                             |
-| `scripts/components/state_gatherer.lua`      | Reads vitals, inventory, nearby ents                   |
-| `scripts/components/llm_action_executor.lua` | Polls & dispatches action commands                     |
-| `agent/prompt.py`                            | All LLM prompt text — tune here                        |
-| `agent/llm_agent.py`                         | Agent core: state polling, Ollama, memory              |
-| `state/game_state.json`                      | Live bridge file (Lua writes, Python reads)            |
-| `state/action_command.json`                  | Live bridge file (Python writes, Lua reads)            |
-| `mod_api_docs/`                              | Offline DS modding API reference                       |
-
-## Component Skeleton Pattern (Lua)
-
-```lua
-local MyComponent = Class(function(self, inst)
-    self.inst = inst
-    self.inst:StartUpdatingComponent(self)
-end)
-function MyComponent:OnUpdate(dt) end
-function MyComponent:OnSave() return {} end
-function MyComponent:OnLoad(data) end
-return MyComponent
-```
-
-## Active TODOs
-
-- [ ] Set current season in `state_gatherer.lua`
-- [ ] Implement `llm_action_executor.lua` action dispatcher
-- [ ] Add `llm_action_executor` component to player in `modmain.lua`
