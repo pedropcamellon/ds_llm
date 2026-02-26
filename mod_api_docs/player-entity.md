@@ -24,7 +24,33 @@ player.components.hunger.max
 -- Sanity
 player.components.sanity.current
 player.components.sanity.max
+
+-- Temperature (body temp, not world temp)
+player.components.temperature:GetCurrent()   -- float, default ~30
+-- Events: "temperaturedelta" {last, new}
 ```
+
+## In-Progress Action (bufferedaction)
+
+When the behavior tree (or player input) pushes an action, it is stored on the
+entity as `player.bufferedaction` until it completes or fails.
+
+```lua
+local ba = player.bufferedaction
+if ba then
+    local action_id  = ba.action.id      -- e.g. "CHOP", "EAT", "PICKUP", "CRAFT"
+    local target     = ba.target         -- entity being acted on (may be nil)
+    local target_name = ba.target and ba.target.prefab  -- e.g. "evergreen"
+    local recipe     = ba.recipe         -- recipe string if crafting, else nil
+end
+```
+
+Key `ACTIONS` ids (from `data/scripts/actions.lua`):
+`CHOP`, `MINE`, `EAT`, `PICKUP`, `DROP`, `CRAFT`, `COOK`, `EQUIP`, `UNEQUIP`,
+`ATTACK`, `INSPECT`, `WALKTO`, `HARVEST`, `DIG`, `PLACE`
+
+`bufferedaction` is `nil` when Wilson is idle or a tick after the action
+completes. `actionsuccess` / `actionfailed` events fire when it resolves.
 
 ## Position & Movement
 
@@ -129,7 +155,6 @@ player:DoPeriodicTask(5.0, function(inst) end)     -- repeat every N seconds
 ```
 
 ## TODO
-- [ ] Equipment slots (head, body, hand)
 - [ ] Crafting / `builder` component
 - [ ] Brain / AI control (`SetBrain`)
 - [ ] HUD access (`player.HUD`)

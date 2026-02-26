@@ -53,11 +53,65 @@ return MyComponent
 Components are auto-discovered from `scripts/components/` — no explicit
 registration needed. Just add the file and call `entity:AddComponent("name")`.
 
+## Key Game Components (Quick Reference)
+
+### health
+```lua
+player.components.health.currenthealth  -- float
+player.components.health.maxhealth      -- float (default 100)
+player.components.health:IsDead()       -- bool
+-- Event: "death", "attacked" {attacker, damage}
+```
+
+### hunger
+```lua
+player.components.hunger.current        -- float
+player.components.hunger.max            -- float (default 150)
+-- Event: "hungerdelta" {oldval, newval}
+```
+
+### sanity
+```lua
+player.components.sanity.current        -- float
+player.components.sanity.max            -- float (default 200)
+-- Event: "sanitydelta"
+```
+
+### temperature
+```lua
+player.components.temperature:GetCurrent()  -- float, default ~30
+-- Event: "temperaturedelta" {last, new}
+```
+
+### locomotor
+```lua
+player.components.locomotor:GoToPoint(Point(x, y, z), bufferedaction, run)
+player.components.locomotor:GoToEntity(target, bufferedaction, run)
+player.components.locomotor:Stop()
+player.components.locomotor:WalkForward()
+-- PushAction sets bufferedaction and begins locomotion:
+player.components.locomotor:PushAction(bufferedaction, run)
+```
+
+### seasonmanager (on world, not player)
+```lua
+local sm = GetWorld().components.seasonmanager
+sm:GetSeason()            -- "autumn"|"winter"|"summer"|"spring"
+sm:IsRaining()            -- bool
+sm:GetPrecipitationRate() -- float
+sm:GetDaysLeftInSeason()  -- int
+```
+
+
 ## TODO — common components to document
-- [ ] `health`
-- [ ] `hunger`
-- [ ] `sanity`
-- [ ] `inventory`
+- [x] `health` — `currenthealth`, `maxhealth`, `IsDead()`
+- [x] `hunger` — `current`, `max`
+- [x] `sanity` — `current`, `max`
+- [x] `temperature` — `GetCurrent()` (player body temp)
+- [x] `inventory` — see inventory.md
+- [x] `talker` — see player-entity.md
+- [ ] `locomotor` — `GoToPoint`, `GoToEntity`, `Stop`
+- [ ] `builder` — crafting / recipe system
 - [ ] `combat`
 - [ ] `locomotor`
 - [ ] `follower` / `homeseeker`

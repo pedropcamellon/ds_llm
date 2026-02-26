@@ -69,6 +69,26 @@ return MyBrain
 | `behaviours/gordonramsay.lua`     | Advanced cooking logic  |
 | `behaviours/manageinventory.lua`  | Drop excess items       |
 
+## Reading In-Progress Action from a Brain
+
+The behavior tree can check what action is currently executing via
+`self.inst.bufferedaction`:
+
+```lua
+-- Inside any brain node or ActionNode fn:
+local ba = self.inst.bufferedaction
+if ba then
+    print("Currently doing: " .. ba.action.id)        -- e.g. "CHOP"
+    if ba.target then
+        print("Target: " .. ba.target.prefab)          -- e.g. "evergreen"
+    end
+end
+```
+
+This is also how the Python agent detects in-progress actions — `state_gatherer.lua`
+reads `player.bufferedaction` and exports `current_action` + `action_target` to
+`game_state.json` each tick.
+
 ## TODO
 - [ ] `BT` tick rate / period tuning
 - [ ] Sleep / DoTaskInTime inside behaviours
