@@ -12,6 +12,8 @@ from pathlib import Path
 
 from action_parser import ActionParser
 from action_writer import ActionWriter
+from conversation_log import ConversationLog
+from inventory_tracker import InventoryTracker
 from llm_agent import DSAIAgent
 from memory import AgentMemory
 from ollama_client import OllamaClient
@@ -35,12 +37,16 @@ def main():
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
+    memory = AgentMemory(STATE_DIR / "agent_memory.jsonl")
+
     agent = DSAIAgent(
         state_reader=StateReader(STATE_DIR / "game_state.json"),
-        memory=AgentMemory(STATE_DIR / "agent_memory.jsonl"),
+        memory=memory,
         llm_client=OllamaClient(model=args.model, url=args.url),
         action_parser=ActionParser(),
         action_writer=ActionWriter(STATE_DIR / "action_command.json"),
+        inventory_tracker=InventoryTracker(memory),
+        conversation_log=ConversationLog(STATE_DIR / "conversation_log.jsonl"),
     )
     agent.run(interval=args.interval)
 

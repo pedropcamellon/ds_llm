@@ -22,6 +22,54 @@ ACTION_SPACE = [
 
 CRITICAL_THRESHOLD = 50  # Health/hunger/sanity below this = urgent action required
 
+# Crafting recipes: item -> {ingredient: count}
+RECIPES: dict[str, dict[str, int]] = {
+    "axe":      {"twig": 1, "flint": 1},
+    "pickaxe":  {"twig": 2, "flint": 2},
+    "campfire": {"log": 2, "cutgrass": 2},
+    "torch":    {"twig": 2, "cutgrass": 2},
+}
+
+
+def _parse_inv(state: dict) -> dict[str, int]:
+    """Convert [\"log x20\", \"axe\"] -> {\"log\": 20, \"axe\": 1}."""
+    result: dict[str, int] = {}
+    for item in state.get("inventory", []):
+        if " x" in item:
+            name, _, count = item.rpartition(" x")
+            result[name.strip()] = int(count)
+        else:
+            result[item.strip()] = 1
+    return result
+
+
+def _prerequisites_section(inv: dict[str, int]) -> str:
+    """Return a concise tool-status + craftability block for the prompt."""
+    lines = []
+
+    # Key tools
+    has_axe = "axe" in inv
+    has_pickaxe = "pickaxe" in inv
+
+    lines.append(f"  axe: {'✓ have it' if has_axe else '✗ missing — craft_item:axe needs 1 twig + 1 flint'}")
+    lines.append(f"  pickaxe: {'✓ have it' if has_pickaxe else '✗ missing — craft_item:pickaxe needs 2 twig + 2 flint'}")
+
+    # What the player can craft right now
+    craftable = [
+        name for name, recipe in RECIPES.items()
+        if all(inv.get(ing, 0) >= qty for ing, qty in recipe.items())
+    ]
+    if craftable:
+        lines.append(f"  Can craft now: {', '.join(craftable)}")
+
+    # Action gating
+    if not has_axe:
+        lines.append("  ⚠ chop_tree requires an axe — craft or find one first")
+    if not has_pickaxe:
+        lines.append("  ⚠ mine_rock requires a pickaxe — craft or find one first")
+
+    return "\n".join(lines)
+
 SYSTEM_RULES = """You are Wilson in Don't Starve. You must survive by gathering resources, cooking food, and managing your health.
 
 CRITICAL RULES:
@@ -34,15 +82,21 @@ CRITICAL RULES:
 - Seasons change: autumn (safe) → winter (cold, scarce food) → spring (rain) → summer (heat)"""
 
 
-def build_prompt(state: dict, memory: list[dict]) -> str:
-    """Build the full LLM prompt from current game state and recent memory."""
+def build_prompt(state: dict, memory: list[dict], inv: dict[str, int] | None = None) -> str:
+    """Build the full LLM prompt from current game state and recent memory.
 
-    # Recent memory (last 5 entries)
+    Args:
+        state:  Raw game state dict from game_state.json.
+        memory: Recent memory entries from AgentMemory.
+        inv:    Pre-parsed inventory counts (avoids re-parsing if caller already has it).
+    """
+
+    # Recent memory — prefer inventory/event entries first, then llm_reason
     memory_context = ""
     if memory:
         memory_context = "Recent events:\n"
-        for entry in memory[-5:]:
-            memory_context += f"  - {entry['text']}\n"
+        for entry in memory[-8:]:
+            memory_context += f"  - [{entry.get('source', 'event')}] {entry['text']}\n"
 
     # Threat summary
     threat_summary = ""
@@ -60,9 +114,12 @@ def build_prompt(state: dict, memory: list[dict]) -> str:
             return f"{value}/{max_value}"
 
     # Inventory — truncate if too long
+    inv = inv if inv is not None else _parse_inv(state)
     inventory_str = ", ".join(state.get("inventory", ["empty"]))
     if len(inventory_str) > 200:
         inventory_str = inventory_str[:197] + "..."
+
+    prerequisites = _prerequisites_section(inv)
 
     # Nearby entities (top 5)
     nearby_lines = "\n".join(
@@ -89,6 +146,9 @@ CURRENT STATUS:
 
 {nearby_header}
 {nearby_lines}
+
+TOOLS & PREREQUISITES:
+{prerequisites}
 
 {threat_summary}
 {memory_context}

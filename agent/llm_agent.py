@@ -10,6 +10,8 @@ import time
 
 from action_parser import ActionParser
 from action_writer import ActionWriter
+from conversation_log import ConversationLog
+from inventory_tracker import InventoryTracker
 from memory import AgentMemory
 from ollama_client import OllamaClient
 from prompt import build_prompt
@@ -24,12 +26,16 @@ class DSAIAgent:
         llm_client: OllamaClient,
         action_parser: ActionParser,
         action_writer: ActionWriter,
+        inventory_tracker: InventoryTracker,
+        conversation_log: ConversationLog,
     ):
         self.state_reader = state_reader
         self.memory = memory
         self.llm_client = llm_client
         self.action_parser = action_parser
         self.action_writer = action_writer
+        self.inventory_tracker = inventory_tracker
+        self.conversation_log = conversation_log
         self.decision_count = 0
 
     # ------------------------------------------------------------------
@@ -50,6 +56,10 @@ class DSAIAgent:
         if self.state_reader.is_world_reset(state):
             self.memory.clear()
             self.memory.add("World reset! Starting fresh.", "system")
+            self.inventory_tracker.reset()
+
+        # Track what changed in inventory since last tick
+        self.inventory_tracker.update(state)
 
         # Emergency fast-path overrides (no LLM call needed)
         override = self._emergency_override(state)
@@ -57,9 +67,11 @@ class DSAIAgent:
             return self._emit(override)
 
         # Normal path: ask the LLM
-        prompt = build_prompt(state, self.memory.recent())
+        prompt = build_prompt(state, self.memory.recent(), self.inventory_tracker.current)
         raw = self.llm_client.generate(prompt)
         action = self.action_parser.parse(raw)
+
+        self.conversation_log.record(prompt, raw or "", action)
 
         if action["action"] != "idle":
             self.memory.add(action["reason"], "llm_reason")
