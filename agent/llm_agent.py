@@ -16,6 +16,7 @@ from memory import AgentMemory
 from ollama_client import OllamaClient
 from prompt import build_prompt
 from state_reader import StateReader
+from world_tracker import WorldTracker
 
 
 class DSAIAgent:
@@ -28,6 +29,7 @@ class DSAIAgent:
         action_writer: ActionWriter,
         inventory_tracker: InventoryTracker,
         conversation_log: ConversationLog,
+        world_tracker: WorldTracker,
     ):
         self.state_reader = state_reader
         self.memory = memory
@@ -36,6 +38,7 @@ class DSAIAgent:
         self.action_writer = action_writer
         self.inventory_tracker = inventory_tracker
         self.conversation_log = conversation_log
+        self.world_tracker = world_tracker
         self.decision_count = 0
 
     # ------------------------------------------------------------------
@@ -63,9 +66,11 @@ class DSAIAgent:
             self.memory.clear()
             self.memory.add("World reset! Starting fresh.", "system")
             self.inventory_tracker.reset()
+            self.world_tracker.reset()
 
-        # Track what changed in inventory since last tick
+        # Track what changed in inventory and world since last tick
         self.inventory_tracker.update(state)
+        self.world_tracker.update(state)
 
         # Emergency fast-path overrides (no LLM call needed)
         override = self._emergency_override(state)

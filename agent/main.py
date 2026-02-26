@@ -18,6 +18,7 @@ from llm_agent import DSAIAgent
 from memory import AgentMemory
 from ollama_client import OllamaClient
 from state_reader import StateReader
+from world_tracker import WorldTracker
 
 STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 
@@ -47,6 +48,7 @@ def main():
         action_writer=ActionWriter(STATE_DIR / "action_command.json"),
         inventory_tracker=InventoryTracker(memory),
         conversation_log=ConversationLog(STATE_DIR / "conversation_log.jsonl"),
+        world_tracker=WorldTracker(ttl_seconds=120.0),
     )
     agent.run(interval=args.interval)
 
