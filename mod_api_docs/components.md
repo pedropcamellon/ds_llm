@@ -6,6 +6,13 @@
 
 Components are Lua tables attached to entities that add data and behaviour.
 They live in `scripts/components/` (game) or `mods/<mod>/scripts/components/` (mod).
+A component is an object that is attached to a Prefab to give it functionality. This is useful for separating code from Prefab files, and sharing common functionality across multiple Prefabs.
+
+One can use AddComponent to add a component to a Prefab in its Prefab file.
+
+Once the component is initialized, it can be accessed through inst.components.COMPONENTNAME Where COMPONENTNAME is the name of the component in lowercase. Some components will require extra setup after AddComponent is called.
+
+Components are each defined in their own lua file, in the scripts/components/ folder.
 
 ## Attaching a Component
 
