@@ -89,15 +89,31 @@ SYSTEM_RULES = """Survive in the wild. Act only on CRITICAL stats (< 50). Priori
 
 
 def build_prompt(
-    state: dict, memory: list[dict], inv: dict[str, int] | None = None
+    state: dict,
+    memory: list[dict],
+    inv: dict[str, int] | None = None,
+    last_action: str | None = None,
+    last_action_changed: bool | None = None,
+    world_history: str = "",
 ) -> str:
     """Build the full LLM prompt from current game state and recent memory.
 
     Args:
-        state:  Raw game state dict from game_state.json.
-        memory: Recent memory entries from AgentMemory.
-        inv:    Pre-parsed inventory counts (avoids re-parsing if caller already has it).
+        state:               Raw game state dict from game_state.json.
+        memory:              Recent memory entries from AgentMemory.
+        inv:                 Pre-parsed inventory counts.
+        last_action:         Action chosen on the previous tick.
+        last_action_changed: True if state changed after it, False if not, None if unknown.
+        world_history:       Compact string of recently-seen-but-gone entities.
     """
+
+    # Last-action feedback
+    last_action_line = ""
+    if last_action:
+        if last_action_changed is False:
+            last_action_line = f"[LAST_ACTION]{chr(10)}  {last_action} → no state change (action had no effect){chr(10)}[/LAST_ACTION]{chr(10)}{chr(10)}"
+        elif last_action_changed is True:
+            last_action_line = f"[LAST_ACTION]{chr(10)}  {last_action} → state changed{chr(10)}[/LAST_ACTION]{chr(10)}{chr(10)}"
 
     # Recent memory — prefer inventory/event entries first, then llm_reason
     memory_lines = ""
@@ -144,6 +160,18 @@ def build_prompt(
 
     action_list = ", ".join(ACTION_SPACE)
 
+    # Wilson's speech + action results since last export (buffered lists)
+    speech_log = state.get("speech_log") or []
+    action_log = state.get("action_log") or []
+    feedback_lines = ""
+    for s in speech_log:
+        feedback_lines += f"  Wilson said: \"{s}\"\n"
+    for a in action_log:
+        if a.get("result") == "failed":
+            feedback_lines += f"  Action failed: {a.get('action')} — {a.get('reason','?')}\n"
+        else:
+            feedback_lines += f"  Action ok: {a.get('action')}\n"
+
     return f"""{SYSTEM_RULES}
 
 [STATUS]
@@ -159,11 +187,11 @@ def build_prompt(
 [NEARBY]
 {nearby_lines}
 [/NEARBY]
-
+{"[WORLD_HISTORY]" + chr(10) + "  Recently seen (now out of view): " + world_history + chr(10) + "[/WORLD_HISTORY]" + chr(10) if world_history else ""}
 [TOOLS]
 {prerequisites}
 [/TOOLS]
-{"[THREATS]" + chr(10) + threat_lines + chr(10) + "[/THREATS]" + chr(10) if threat_lines else ""}[MEMORY]
+{last_action_line}{"[FEEDBACK]" + chr(10) + feedback_lines.rstrip() + chr(10) + "[/FEEDBACK]" + chr(10) if feedback_lines else ""}{"[THREATS]" + chr(10) + threat_lines + chr(10) + "[/THREATS]" + chr(10) if threat_lines else ""}[MEMORY]
 {memory_lines.rstrip() or "  (none)"}
 [/MEMORY]
 

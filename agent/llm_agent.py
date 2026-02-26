@@ -40,6 +40,10 @@ class DSAIAgent:
         self.conversation_log = conversation_log
         self.world_tracker = world_tracker
         self.decision_count = 0
+        self._last_action: str | None = None
+        self._last_action_changed: bool | None = (
+            None  # did state change after last action?
+        )
 
     # ------------------------------------------------------------------
     # Decision logic
@@ -54,13 +58,24 @@ class DSAIAgent:
 
         if not self.state_reader.has_changed(state):
             print("[Agent] State unchanged, skipping decision")
+            if self._last_action:
+                self._last_action_changed = False
             return None
+
+        self._last_action_changed = True if self._last_action else None
 
         if self.state_reader.is_game_over(state):
             self.memory.clear()
-            self.memory.add("Wilson died. Cleared stale memory.", "system")
+            self.memory.add("You died. Cleared stale memory.", "system")
             self.inventory_tracker.reset()
-            return self._emit({"action": "idle", "reason": "Game over — waiting for new world"})
+            self.world_tracker.reset()
+            return self._emit(
+                {"action": "idle", "reason": "Game over — waiting for new world"}
+            )
+
+        if state.get("health", 0) <= 0:
+            print("[Agent] You died — waiting for new world")
+            return None
 
         if self.state_reader.is_world_reset(state):
             self.memory.clear()
@@ -78,7 +93,14 @@ class DSAIAgent:
             return self._emit(override)
 
         # Normal path: ask the LLM
-        prompt = build_prompt(state, self.memory.recent(), self.inventory_tracker.current)
+        prompt = build_prompt(
+            state,
+            self.memory.recent(),
+            self.inventory_tracker.current,
+            last_action=self._last_action,
+            last_action_changed=self._last_action_changed,
+            world_history=self.world_tracker.summary_lines(state),
+        )
         raw = self.llm_client.generate(prompt)
         action = self.action_parser.parse(raw)
 
@@ -133,5 +155,6 @@ class DSAIAgent:
         return None
 
     def _emit(self, action: dict) -> dict:
+        self._last_action = action["action"]
         self.action_writer.write(action)
         return action
