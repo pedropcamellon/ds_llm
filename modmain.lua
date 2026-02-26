@@ -1,3 +1,19 @@
+-- =============================================================================
+-- modmain.lua — Artificial Wilson LLM Mod
+-- =============================================================================
+-- Entry point for the mod. Responsibilities:
+--   1. AI toggle   — Ctrl+P enables/disables the behavior-tree brain (setSelfAI /
+--                    setSelfNormal). Ctrl+Alt+P reverts to normal Wilson brain.
+--   2. HUD hooks   — Brain icon click toggles AI; pulses while active.
+--                    Stomach icon is a debug cheat to fill inventory.
+--   3. spawnAI     — Spawns a second AI-controlled Wilson clone for testing.
+--   4. Locomotor   — Patches the locomotor component with RoG-compatible
+--                    pathfinding (OnUpdate override).
+--   5. Inventory   — Extends inventory with IsTotallyFull() helper.
+--   6. LLM bridge  — Attaches llm_state_exporter (and future llm_action_executor)
+--                    to Wilson so the Python agent can read/write game state via
+--                    JSON files on disk.
+-- =============================================================================
 local Vector3 = GLOBAL.Vector3
 -- TODO local dlcEnabled = GLOBAL.IsDLCEnabled(GLOBAL.REIGN_OF_GIANTS)
 local SEASONS = GLOBAL.SEASONS
