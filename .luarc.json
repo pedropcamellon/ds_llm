@@ -1,0 +1,54 @@
+{
+  "runtime": {
+    "version": "Lua 5.1"
+  },
+  "diagnostics": {
+    "globals": [
+      "GLOBAL",
+      "Class",
+      "GetClock",
+      "GetPlayer",
+      "GetWorld",
+      "TheSim",
+      "Vector3",
+      "Point",
+      "EQUIPSLOTS",
+      "SEASONS",
+      "TUNING",
+      "ANIM_ORIENTATION",
+      "LAYER_BACKGROUND",
+      "Brain",
+      "BT",
+      "PriorityNode",
+      "SequenceNode",
+      "WhileNode",
+      "ActionNode",
+      "ConditionNode",
+      "WaitNode",
+      "EventNode",
+      "LoopNode",
+      "NotDecorator",
+      "FailIfRunning",
+      "DoAction",
+      "BufferedAction",
+      "CreateEntity",
+      "SpawnPrefab",
+      "AddBrainPostInit",
+      "AddComponentPostInit",
+      "AddPlayerPostInit",
+      "AddPrefabPostInit",
+      "AddSimPostInit",
+      "AddClassPostConstruct",
+      "AddMinimapAtlas",
+      "modimport",
+      "Asset",
+      "PrefabFiles",
+      "Assets",
+      "GetModConfigData",
+      "print"
+    ]
+  },
+  "workspace": {
+    "ignoreDir": ["anim", "images", "sound", "state"]
+  }
+}
