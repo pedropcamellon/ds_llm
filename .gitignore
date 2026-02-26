@@ -2,3 +2,4 @@
 .github/instructions/instructions.md
 *_DRAFT.md
 state/*.json
+state/*.jsonl
