@@ -3,3 +3,4 @@
 *_DRAFT.md
 state/*.json
 state/*.jsonl
+agent/__pycache__/*
