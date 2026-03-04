@@ -27,26 +27,64 @@ end
 
 function StateGatherer.GetTimeInfo(clock)
     if not clock then
-        return 0, 0, "unknown"
+        return 0, 0, "unknown", "unknown"
     end
 
     local day = 0
     local time_of_day = 0
     local season = "unknown"
+    local phase = "unknown"
 
     local success = pcall(function()
         day = clock:GetDay() or 0
         time_of_day = clock:GetDayTime() or 0
+        phase = clock:GetPhase() or "unknown"
 
-        if GLOBAL.SEASONS then
-            local season_idx = clock:GetSeason()
-            if season_idx and GLOBAL.SEASONS[season_idx] then
-                season = GLOBAL.SEASONS[season_idx]
+        -- Season via SeasonManager (correct API for DS single-player)
+        local world = GetWorld and GetWorld()
+        if world and world.components.seasonmanager then
+            season = world.components.seasonmanager:GetSeason() or "unknown"
+        end
+    end)
+
+    return day, time_of_day, season, phase
+end
+
+-- Returns rain/snow and temperature state from world + player components
+function StateGatherer.GetWorldState(player)
+    local is_raining = false
+    local temperature = nil
+
+    pcall(function()
+        local world = GetWorld and GetWorld()
+        if world and world.components.seasonmanager then
+            is_raining = world.components.seasonmanager:IsRaining() or false
+        end
+        if player.components.temperature then
+            temperature = math.floor(player.components.temperature:GetCurrent())
+        end
+    end)
+
+    return is_raining, temperature
+end
+
+-- Returns the in-progress buffered action, if any
+-- bufferedaction is set by locomotor/brain while Wilson walks to and executes an action
+function StateGatherer.GetCurrentAction(player)
+    local action_name = nil
+    local target_name = nil
+
+    pcall(function()
+        local ba = player.bufferedaction
+        if ba and ba.action then
+            action_name = ba.action.id or tostring(ba.action)
+            if ba.target and ba.target.prefab then
+                target_name = ba.target.prefab
             end
         end
     end)
 
-    return day, time_of_day, season
+    return action_name, target_name
 end
 
 function StateGatherer.GetInventory(player)

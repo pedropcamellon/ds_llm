@@ -128,23 +128,30 @@ function LLMStateExporter:ExportGameState()
         end
 
         -- Gather all state using StateGatherer
-        local day, time_of_day, season = StateGatherer.GetTimeInfo(clock)
+        local day, time_of_day, season, phase = StateGatherer.GetTimeInfo(clock)
         local health, hunger, sanity = StateGatherer.GetPlayerVitals(player)
         local inventory, equipped = StateGatherer.GetInventory(player)
         local position = StateGatherer.GetPosition(player)
         local nearby_entities = StateGatherer.GetNearbyEntities(player, 30)
         local threats = StateGatherer.GetThreats(player, 20)
+        local is_raining, temperature = StateGatherer.GetWorldState(player)
+        local current_action, action_target = StateGatherer.GetCurrentAction(player)
 
         -- Build the state object
         local state = {
             day = day,
             time_of_day = math.ceil(time_of_day * 100) / 100,
+            phase = phase,
             season = season,
             health = health,
             hunger = hunger,
             sanity = sanity,
+            temperature = temperature,
+            is_raining = is_raining,
             inventory = inventory,
             equipped = equipped,
+            current_action = current_action,
+            action_target = action_target,
             nearby_entities = nearby_entities,
             threats = threats,
             position = position,
