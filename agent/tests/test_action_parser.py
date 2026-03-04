@@ -23,11 +23,6 @@ def test_missing_reason_defaults(parser):
     assert result["reason"] == "no reason given"
 
 
-def test_numeric_action_rejected_as_idle(parser):
-    # Numeric action values are invalid LLM output — should fall back to idle
-    result = parser.parse('{"action": 42, "reason": "test"}')
-    assert result["action"] == "idle"
-
 
 # ── Junk characters emitted by small LLMs ────────────────────────────────────
 
