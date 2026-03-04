@@ -11,23 +11,23 @@ from memory import AgentMemory
 class InventoryTracker:
     def __init__(self, memory: AgentMemory):
         self.memory = memory
-        self._prev: dict[str, int] = {}
+        self._prev: dict[str, int] | None = None  # None = no tick seen yet
 
     def reset(self) -> None:
         """Clear stored inventory (e.g. on world reset)."""
-        self._prev = {}
+        self._prev = None
 
     def update(self, state: dict) -> dict[str, int]:
         """Parse inventory from state, log any deltas, return current counts."""
         current = self._parse(state)
-        if self._prev:
+        if self._prev is not None:  # skip delta on very first tick
             self._log_delta(current)
         self._prev = current
         return current
 
     @property
     def current(self) -> dict[str, int]:
-        return self._prev
+        return self._prev if self._prev is not None else {}
 
     # ------------------------------------------------------------------
     # Private helpers

@@ -13,6 +13,8 @@ from pathlib import Path
 from action_parser import ActionParser
 from action_writer import ActionWriter
 from conversation_log import ConversationLog
+from action_planner import ActionPlanner
+from goal_manager import GoalManager
 from inventory_tracker import InventoryTracker
 from llm_agent import DSAIAgent
 from memory import AgentMemory
@@ -49,6 +51,8 @@ def main():
         inventory_tracker=InventoryTracker(memory),
         conversation_log=ConversationLog(STATE_DIR / "conversation_log.jsonl"),
         world_tracker=WorldTracker(ttl_seconds=120.0),
+        goal_planner=ActionPlanner(),
+        goal_manager=GoalManager(),
     )
     agent.run(interval=args.interval)
 

@@ -1,6 +1,6 @@
-.github/local_instructions/*
+__pycache__
 .github/instructions/instructions.md
+.github/local_instructions/*
 *_DRAFT.md
 state/*.json
 state/*.jsonl
-agent/__pycache__/*
