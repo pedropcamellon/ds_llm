@@ -1,0 +1,33 @@
+{
+  "day": 5,
+  "time_of_day": 0.45,
+  "phase": "day",
+  "season": "autumn",
+  "health": 35,
+  "hunger": 85,
+  "sanity": 140,
+  "temperature": 22,
+  "is_raining": false,
+  "inventory": ["berries x4", "carrot x2", "twigs x5", "log x3"],
+  "equipped": "none",
+  "current_action": null,
+  "action_target": null,
+  "position": {"x": 180.2, "z": -75.8},
+  "nearby_entities": [
+    {"name": "spider", "type": "hostile", "distance": 8.5},
+    {"name": "spider_den", "type": "other", "distance": 12.3},
+    {"name": "sapling", "type": "harvestable", "distance": 15.2},
+    {"name": "berrybush", "type": "harvestable", "distance": 18.7}
+  ],
+  "threats": [
+    {"name": "spider", "distance": 8.5}
+  ],
+  "speech_log": ["That hurt!", "I should avoid combat."],
+  "action_log": [
+    {"result": "failed", "action": "attack_enemy:spider", "reason": "took damage"}
+  ],
+  "memory_log": [
+    {"source": "damage", "text": "Lost 20 health to spider"},
+    {"source": "llm_reason", "text": "Need to heal before engaging enemies"}
+  ]
+}

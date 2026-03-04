@@ -1,0 +1,33 @@
+{
+  "day": 23,
+  "time_of_day": 0.35,
+  "phase": "day",
+  "season": "winter",
+  "health": 145,
+  "hunger": 130,
+  "sanity": 190,
+  "temperature": -5,
+  "is_raining": false,
+  "inventory": ["log x20", "twigs x15", "cutgrass x12", "rocks x8", "flint x3", "berries x10", "carrot x5", "axe", "pickaxe"],
+  "equipped": "axe",
+  "current_action": "chop",
+  "action_target": "evergreen",
+  "position": {"x": 350.7, "z": -210.4},
+  "nearby_entities": [
+    {"name": "firepit", "type": "structure", "distance": 2.1},
+    {"name": "chest", "type": "structure", "distance": 3.5},
+    {"name": "evergreen", "type": "harvestable", "distance": 8.2},
+    {"name": "evergreen", "type": "harvestable", "distance": 11.5},
+    {"name": "rock1", "type": "harvestable", "distance": 15.3},
+    {"name": "beefalo", "type": "other", "distance": 25.8}
+  ],
+  "threats": [],
+  "speech_log": [],
+  "action_log": [
+    {"result": "success", "action": "chop_tree", "reason": "gathered 3 logs"}
+  ],
+  "memory_log": [
+    {"source": "inventory", "text": "Gained 3 log"},
+    {"source": "llm_reason", "text": "Stockpiling resources for winter survival"}
+  ]
+}

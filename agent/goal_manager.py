@@ -189,7 +189,7 @@ class GoalManager:
         if temperature is not None and float(temperature) < 0:
             return ShortTermGoal(
                 urgency=Urgency.URGENT,
-                description=f"Freezing ({temperature}°)! Light a fire or find warmth.",
+                description=f"Freezing ({temperature}C)! Light a fire or find warmth.",
                 preferred_actions=[
                     "craft_item:campfire",
                     "craft_item:torch",
@@ -257,9 +257,9 @@ class GoalManager:
         can_campfire = inv.get("log", 0) >= 2 and inv.get("cutgrass", 0) >= 3
 
         if can_torch:
-            options.append("craft_item:torch (twigs×2+cutgrass×2 — ready!)")
+            options.append("craft_item:torch (twigsx2+cutgrassx2 - ready!)")
         if can_campfire:
-            options.append("craft_item:campfire (log×2+cutgrass×3 — ready!)")
+            options.append("craft_item:campfire (logx2+cutgrassx3 - ready!)")
 
         if not options:
             # Cheapest path is a torch; tell the player what to gather
@@ -271,7 +271,7 @@ class GoalManager:
             if grass_have < 2:
                 need_parts.append(f"cutgrass (have {grass_have}, need 2)")
             gather_hint = " + ".join(need_parts) if need_parts else "twigs+cutgrass"
-            options.append(f"Gather {gather_hint} → then craft_item:torch")
+            options.append(f"Gather {gather_hint} -> then craft_item:torch")
 
         desc = f"Night! No fire. {' OR '.join(options)}"
         return ShortTermGoal(

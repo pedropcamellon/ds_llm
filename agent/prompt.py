@@ -112,9 +112,9 @@ def build_prompt(
     last_action_line = ""
     if last_action:
         if last_action_changed is False:
-            last_action_line = f"[LAST_ACTION]{chr(10)}  {last_action} → no state change (action had no effect){chr(10)}[/LAST_ACTION]{chr(10)}{chr(10)}"
+            last_action_line = f"[LAST_ACTION]{chr(10)}  {last_action} -> no state change (action had no effect){chr(10)}[/LAST_ACTION]{chr(10)}{chr(10)}"
         elif last_action_changed is True:
-            last_action_line = f"[LAST_ACTION]{chr(10)}  {last_action} → state changed{chr(10)}[/LAST_ACTION]{chr(10)}{chr(10)}"
+            last_action_line = f"[LAST_ACTION]{chr(10)}  {last_action} -> state changed{chr(10)}[/LAST_ACTION]{chr(10)}{chr(10)}"
 
     # Recent memory — show up to 8 entries, but collapse consecutive duplicate
     # llm_reason entries into one so the model doesn't get anchored to a
@@ -163,7 +163,7 @@ def build_prompt(
     # Nearby entities (top 5)
     nearby_lines = (
         "\n".join(
-            f"  • {e['name']} ({e['type']}) - {e['distance']}m"
+            f"  - {e['name']} ({e['type']}) - {e['distance']}m"
             for e in state.get("nearby_entities", [])[:5]
         )
         or "  (none)"
@@ -189,13 +189,13 @@ def build_prompt(
     current_action_line = ""
     if cur_action:
         current_action_line = (
-            f"  Doing:{cur_action}" + (f" → {cur_target}" if cur_target else "") + "\n"
+            f"  Doing:{cur_action}" + (f" -> {cur_target}" if cur_target else "") + "\n"
         )
 
     # Weather
     rain_str = " RAINING" if state.get("is_raining") else ""
     temp = state.get("temperature")
-    temp_str = f" Temp:{temp}°" if temp is not None else ""
+    temp_str = f" Temp:{temp}C" if temp is not None else ""
 
     return f"""{SYSTEM_RULES}
 {"[GOALS]" + chr(10) + "  " + goals + chr(10) + "[/GOALS]" + chr(10) if goals else ""}

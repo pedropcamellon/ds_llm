@@ -1,0 +1,29 @@
+{
+  "day": 1,
+  "time_of_day": 0.78,
+  "phase": "dusk",
+  "season": "autumn",
+  "health": 140,
+  "hunger": 120,
+  "sanity": 185,
+  "temperature": 15,
+  "is_raining": false,
+  "inventory": ["twigs x12", "cutgrass x8"],
+  "equipped": "none",
+  "current_action": null,
+  "action_target": null,
+  "position": {"x": 220.3, "z": -102.7},
+  "nearby_entities": [
+    {"name": "sapling", "type": "harvestable", "distance": 3.5},
+    {"name": "grass", "type": "harvestable", "distance": 5.2},
+    {"name": "evergreen", "type": "harvestable", "distance": 12.3},
+    {"name": "spider_den", "type": "other", "distance": 25.7},
+    {"name": "flower", "type": "other", "distance": 8.1}
+  ],
+  "threats": [],
+  "speech_log": ["It's getting dark!"],
+  "action_log": [],
+  "memory_log": [
+    {"source": "llm_reason", "text": "Gathering resources for fire before nightfall"}
+  ]
+}

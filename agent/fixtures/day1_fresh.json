@@ -1,0 +1,29 @@
+{
+  "day": 1,
+  "time_of_day": 0.15,
+  "phase": "day",
+  "season": "autumn",
+  "health": 150,
+  "hunger": 150,
+  "sanity": 200,
+  "temperature": 20,
+  "is_raining": false,
+  "inventory": [],
+  "equipped": "none",
+  "current_action": null,
+  "action_target": null,
+  "position": {"x": 100.5, "z": -45.2},
+  "nearby_entities": [
+    {"name": "evergreen", "type": "harvestable", "distance": 5.2},
+    {"name": "evergreen", "type": "harvestable", "distance": 8.7},
+    {"name": "sapling", "type": "harvestable", "distance": 6.3},
+    {"name": "grass", "type": "harvestable", "distance": 7.1},
+    {"name": "rock1", "type": "harvestable", "distance": 12.5},
+    {"name": "flint", "type": "other", "distance": 15.8},
+    {"name": "berrybush", "type": "harvestable", "distance": 18.2}
+  ],
+  "threats": [],
+  "speech_log": [],
+  "action_log": [],
+  "memory_log": []
+}
