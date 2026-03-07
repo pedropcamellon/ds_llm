@@ -26,22 +26,22 @@ Each module has one clear purpose:
 
 ```bash
 # Basic usage
-python -m tools.debug_cli fixtures/low_health_hostile.json
+ds_llm\agent> uv run debug_cli.py .\fixtures\day2_spring_inventory.json
 
 # Show only actions
-python -m tools.debug_cli fixtures/low_health_hostile.json --actions-only
+uv run debug_cli.py fixtures/low_health_hostile.json --actions-only
 
 # Show only prompt
-python -m tools.debug_cli fixtures/low_health_hostile.json --prompt-only
+uv run debug_cli.py fixtures/low_health_hostile.json --prompt-only
 
 # JSON output (machine-readable)
-python -m tools.debug_cli fixtures/low_health_hostile.json --json
+uv run debug_cli.py fixtures/low_health_hostile.json --json
 
 # Actually call Ollama
-python -m tools.debug_cli fixtures/low_health_hostile.json --with-llm
+uv run debug_cli.py fixtures/low_health_hostile.json --with-llm
 
 # Use different model
-python -m tools.debug_cli fixtures/low_health_hostile.json --with-llm --model mistral:latest
+uv run debug_cli.py fixtures/low_health_hostile.json --with-llm --model mistral:latest
 ```
 
 ## Module Structure
