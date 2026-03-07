@@ -16,8 +16,7 @@ class ValidActionsSection(PromptSection):
         self.instructions = instructions or self._default_instructions()
 
     def _default_instructions(self) -> str:
-        return """Pick ONE action and ONE target from that action's list.
-Reply with JSON using format: {"action":"action_name","target":"chosen_target","reason":"why"}"""
+    return """Pick ONE action and ONE target from this action's list and reply with JSON using format: {"action":"action_name","target":"chosen_target","reason":"why"}"""
 
     def render(self, ctx: PromptContext) -> str:
         valid_actions = ctx.current_turn_actions
@@ -41,8 +40,7 @@ Reply with JSON using format: {"action":"action_name","target":"chosen_target","
 
             actions_text = "\n".join(action_lines)
 
-        return f"""[ACTIONS]
+        return f"""{self.instructions}
+[ACTIONS]
 {actions_text}
-[/ACTIONS]
-
-{self.instructions}"""
+[/ACTIONS]"""

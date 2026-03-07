@@ -48,16 +48,8 @@ class ConcreteActionBuilder:
         for action in sorted(base_valid):
             if action.startswith("craft_item:"):
                 item_name = action.replace("craft_item:", "")
-                spec = self._filter.specs[action]
-                if spec.requires:
-                    cost = "+".join(f"{k}x{v}" for k, v in spec.requires.items())
-                    actions.append(
-                        ActionOption(
-                            action="craft_item", target=f"{item_name} ({cost})"
-                        )
-                    )
-                else:
-                    actions.append(ActionOption(action="craft_item", target=item_name))
+                # Only item name - no ingredients
+                actions.append(ActionOption(action="craft_item", target=item_name))
 
         # 2. Tool-gated actions
         if "chop_tree" in base_valid:

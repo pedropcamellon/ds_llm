@@ -257,9 +257,9 @@ class GoalManager:
         can_campfire = inv.get("log", 0) >= 2 and inv.get("cutgrass", 0) >= 3
 
         if can_torch:
-            options.append("craft_item:torch (twigsx2+cutgrassx2 - ready!)")
+            options.append("craft_item:torch")
         if can_campfire:
-            options.append("craft_item:campfire (logx2+cutgrassx3 - ready!)")
+            options.append("craft_item:campfire")
 
         if not options:
             # Cheapest path is a torch; tell the player what to gather

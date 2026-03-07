@@ -119,7 +119,6 @@ def test_night_can_craft_torch_shows_hint(gm):
     inv = {"twigs": 2, "cutgrass": 2}
     stg = gm.get_short_term_goal(state, inv)
     assert "craft_item:torch" in stg.description
-    assert "ready" in stg.description
 
 
 def test_night_can_craft_campfire_shows_hint(gm):
@@ -127,7 +126,6 @@ def test_night_can_craft_campfire_shows_hint(gm):
     inv = {"log": 2, "cutgrass": 3}
     stg = gm.get_short_term_goal(state, inv)
     assert "craft_item:campfire" in stg.description
-    assert "ready" in stg.description
 
 
 def test_night_cannot_craft_shows_gather_hint(gm):

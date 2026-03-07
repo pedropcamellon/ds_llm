@@ -148,12 +148,15 @@ def test_concrete_gather_resource_from_harvestable(planner):
     assert any("gather_resource:twigs" in a for a in actions)
 
 
-def test_concrete_craft_action_includes_cost(planner):
+def test_concrete_craft_action_just_item_name(planner):
+    """Craft targets show only item name (no ingredients - Python already filtered)."""
     inv = {"twigs": 1, "flint": 1}
     actions = planner.get_concrete_actions(inv, _EMPTY_STATE)
+    # Should have craft_item:axe (just the name)
     assert any("craft_item:axe" in a for a in actions)
     axe_line = next(a for a in actions if "craft_item:axe" in a)
-    assert "twigs" in axe_line and "flint" in axe_line
+    # Should NOT include ingredient cost (simpler for small LLMs)
+    assert "(" not in axe_line
 
 
 def test_concrete_chop_tree_needs_axe(planner):
