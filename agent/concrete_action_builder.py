@@ -149,8 +149,9 @@ class ConcreteActionBuilder:
             actions.append(
                 ActionOption(action="attack_enemy", target=f"{tname} ({tdist}m)")
             )
-        if threats:
-            actions.append(ActionOption(action="run_from_enemy"))
+            actions.append(
+                ActionOption(action="run_from_enemy", target=f"{tname} ({tdist}m)")
+            )
 
         # 7. Exploration fallback (always available)
         for direction in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
