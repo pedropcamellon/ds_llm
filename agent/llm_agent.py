@@ -6,6 +6,7 @@ All I/O, HTTP, parsing, and memory concerns are delegated to injected collaborat
 (see main.py for wiring). This class only contains the decision loop.
 """
 
+import random
 import time
 
 from action_parser import ActionParser
@@ -17,10 +18,14 @@ from action_planner import (
 )  # TODO GoalPlanner alias kept for attribute names
 from inventory_tracker import InventoryTracker
 from memory import AgentMemory
+from models import ActionOption
 from ollama_client import OllamaClient
 from prompt import build_prompt
 from state_reader import StateReader
 from world_tracker import WorldTracker
+
+# Available exploration directions for fallback actions
+_EXPLORE_DIRECTIONS = ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]
 
 
 class DSAIAgent:
@@ -57,12 +62,28 @@ class DSAIAgent:
     # Decision logic
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _random_explore_action(reason: str) -> dict:
+        """Return explore action with random direction to avoid directional bias.
+        
+        TODO: Future improvements for exploration strategy:
+        - Track previously explored directions and prefer unexplored ones
+        - Avoid immediate backtracking (opposite direction of last explore)
+        - Use cartographer data to prefer directions with unexplored map tiles
+        - Weight directions based on nearby entities (resources, threats)
+        """
+        return {
+            "action": "explore",
+            "target": random.choice(_EXPLORE_DIRECTIONS),
+            "reason": reason,
+        }
+
     def decide(self) -> dict | None:
         """Read game state, apply emergency overrides, call LLM, write action."""
         state = self.state_reader.read()
         if not state:
-            print("[Agent] Cannot read game state, idling...")
-            return self._emit({"action": "idle", "reason": "No game state available"})
+            print("[Agent] Cannot read game state, exploring...")
+            return self._emit(self._random_explore_action("No game state available"))
 
         if not self.state_reader.has_changed(state):
             print("[Agent] State unchanged, skipping decision")
@@ -78,7 +99,7 @@ class DSAIAgent:
             self.inventory_tracker.reset()
             self.world_tracker.reset()
             return self._emit(
-                {"action": "idle", "reason": "Game over — waiting for new world"}
+                self._random_explore_action("Game over — waiting for new world")
             )
 
         if state.get("health", 0) <= 0:
@@ -106,16 +127,15 @@ class DSAIAgent:
         except StateFieldError as exc:
             print(f"\n{'!' * 60}")
             print(str(exc))
-            print("[Agent] Emitting IDLE. Fix the Lua exporter then resume.")
+            print("[Agent] Emitting random explore. Fix the Lua exporter then resume.")
             print(f"{'!' * 60}\n")
-            return self._emit({"action": "idle", "reason": "STATE BROKEN — PAUSE GAME"})
+            return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
         if override:
             return self._emit(override)
 
         # Compute concrete, specific actions from inventory + live state
-        # (e.g. eat_food:berries, pick_up_item:log, gather_resource:flint)
-        # PrereqFilter already excludes blocked and redundant actions, so
-        # concrete_actions is the final clean list for the prompt.
+        # Returns list of ActionOption objects with action/target/reason fields.
+        # PrereqFilter already excludes blocked and redundant actions.
         concrete_actions = self.goal_planner.get_concrete_actions(inv, state)
 
         # Derive goals; preferred_actions bubble relevant variants to the top
@@ -125,24 +145,21 @@ class DSAIAgent:
         except StateFieldError as exc:
             print(f"\n{'!' * 60}")
             print(str(exc))
-            print("[Agent] Emitting IDLE. Fix the Lua exporter then resume.")
+            print("[Agent] Emitting random explore. Fix the Lua exporter then resume.")
             print(f"{'!' * 60}\n")
-            return self._emit({"action": "idle", "reason": "STATE BROKEN — PAUSE GAME"})
+            return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
 
         # Bubble preferred actions to the top of the concrete list
         if stg and stg.preferred_actions:
-            # A preferred prefix matches if the concrete action starts with it
-            def _is_preferred(a: str) -> bool:
-                a_base = a.split(":")[0].split("(")[0].strip()
-                return any(a_base == p.split(":")[0] for p in stg.preferred_actions)
+            # A preferred prefix matches if the action name matches
+            def _is_preferred(opt: ActionOption) -> bool:
+                return any(opt.action == p.split(":")[0] for p in stg.preferred_actions)
 
             preferred = [a for a in concrete_actions if _is_preferred(a)]
             rest = [a for a in concrete_actions if not _is_preferred(a)]
-            ordered = preferred + rest
+            ordered: list[ActionOption] = preferred + rest
         else:
-            ordered = concrete_actions
-
-        valid_actions = "\n  ".join(ordered)
+            ordered: list[ActionOption] = concrete_actions
 
         # Normal path: ask the LLM
         prompt = build_prompt(
@@ -152,60 +169,51 @@ class DSAIAgent:
             last_action=self._last_action,
             last_action_changed=self._last_action_changed,
             world_history=self.world_tracker.summary_lines(state),
-            valid_actions=valid_actions,
+            valid_actions=ordered,
             goals=goals,
         )
         raw = self.llm_client.generate(prompt)
         action = self.action_parser.parse(raw)
 
-        # Validate: extract base action name (strip :target and annotations)
-        # e.g. "eat_food:berries  (have 3)" → "eat_food:berries"
-        # Validate: extract base action name (strip annotations like "  (9.3m away)")
-        # e.g. "pick_up_item:twigs  (9.3m away)" → "pick_up_item:twigs"
-        def _base(a: str) -> str:
-            return a.split("(")[0].strip()
+        # Validate: check if the LLM's action+target exists in our offered list
+        # Build lookup: action name -> list of ActionOption objects
+        actions_by_name: dict[str, list[ActionOption]] = {}
+        for opt in ordered:
+            actions_by_name.setdefault(opt.action, []).append(opt)
 
-        # Map action type → all concrete variants offered (e.g. "pick_up_item" → ["pick_up_item:twigs", ...])
-        concrete_by_type: dict[str, list[str]] = {}
-        for a in ordered:
-            t = _base(a).split(":")[0]
-            concrete_by_type.setdefault(t, []).append(_base(a))
+        chosen_action = action["action"]
+        chosen_target = action.get("target")
 
-        action_base = _base(action["action"])
-        action_type = action_base.split(":")[0]
-
-        if action_type not in concrete_by_type and action["action"] != "idle":
+        # Check if action name is valid
+        if chosen_action not in actions_by_name:
             print(
-                f"[Agent] INVALID: '{action['action']}' not in valid_actions — forcing explore"
+                f"[Agent] INVALID: '{chosen_action}' not in valid_actions — forcing random explore"
             )
             self.memory.add(
-                f"Rejected '{action['action']}' (not in valid actions), forced explore",
+                f"Rejected '{chosen_action}' (not in valid actions), forced explore",
                 "system",
             )
-            action = {
-                "action": "explore",
-                "reason": f"'{action['action']}' not a valid action",
-            }
-        elif ":" not in action_base and any(":" in c for c in concrete_by_type.get(action_type, [])):
-            # LLM returned a bare type (e.g. "pick_up_item") but we only offered
-            # specific variants (e.g. "pick_up_item:twigs"). Reject — the LLM must
-            # copy the exact action string including the :target suffix.
-            print(
-                f"[Agent] INVALID: '{action['action']}' missing required :target — forcing explore"
-            )
-            self.memory.add(
-                f"Rejected '{action['action']}' (missing :target), forced explore",
-                "system",
-            )
-            action = {
-                "action": "explore",
-                "reason": f"'{action['action']}' must include a specific target (e.g. {concrete_by_type[action_type][0]})",
-            }
+            action = self._random_explore_action(f"'{chosen_action}' not a valid action")
+        elif chosen_action in actions_by_name:
+            # Validate target if needed
+            valid_opts = actions_by_name[chosen_action]
+            needs_target = any(opt.target is not None for opt in valid_opts)
+            
+            if needs_target and not chosen_target:
+                print(
+                    f"[Agent] INVALID: '{chosen_action}' missing required target — forcing random explore"
+                )
+                self.memory.add(
+                    f"Rejected '{chosen_action}' (missing target), forced explore",
+                    "system",
+                )
+                action = self._random_explore_action(
+                    f"'{chosen_action}' must include a specific target"
+                )
 
         self.conversation_log.record(prompt, raw or "", action)
 
-        if action["action"] != "idle":
-            self.memory.add(action["reason"], "llm_reason")
+        self.memory.add(action["reason"], "llm_reason")
 
         self.decision_count += 1
         return self._emit(action)
@@ -231,7 +239,7 @@ class DSAIAgent:
         """Return a hardcoded action for critical situations, or None.
 
         Raises StateFieldError if required vitals are missing in the state.
-        Callers must catch this and emit idle + warn.
+        Callers must catch this and emit explore + warn.
         """
         health = _require_field(state, "health", float)
         threats = state.get("threats") or []  # None → no threats (safe)
