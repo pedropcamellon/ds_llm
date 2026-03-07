@@ -65,12 +65,11 @@ def create_default_builder() -> PromptBuilder:
     """Factory function that creates PromptBuilder with default sections."""
     from prompt.sections.instructions import InstructionsSection
     from prompt.sections.goals import GoalsSection
+    # from prompt.sections.feedback import FeedbackSection
     from prompt.sections.status import StatusSection
     from prompt.sections.inventory import InventorySection
     from prompt.sections.nearby import NearbySection
-    from prompt.sections.tools import ToolsSection
     from prompt.sections.threats import ThreatsSection
-    from prompt.sections.feedback import FeedbackSection
     from prompt.sections.memory import MemorySection
     from prompt.sections.world_history import WorldHistorySection
     from prompt.sections.last_action import LastActionSection
@@ -82,9 +81,8 @@ def create_default_builder() -> PromptBuilder:
         StatusSection(),
         InventorySection(),
         NearbySection(max_entities=15),
-        ToolsSection(),
         ThreatsSection(),
-        FeedbackSection(),
+        # TODO FeedbackSection(),
         MemorySection(max_entries=8, lookahead=3),
         WorldHistorySection(),
         LastActionSection(),
