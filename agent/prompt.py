@@ -11,13 +11,12 @@ ACTION_SPACE = [
     "chop_tree",
     "mine_rock",
     "pick_up_item",
-    "craft_item:NAME",
+    "craft_item",
     "eat_food",
     "cook_food",
     "run_from_enemy",
     "attack_enemy",
     "explore",
-    "idle",
 ]
 
 CRITICAL_THRESHOLD = 50  # Health/hunger/sanity below this = urgent action required
@@ -79,8 +78,7 @@ def _prerequisites_section(inv: dict[str, int]) -> str:
 SYSTEM_RULES = """Survive in the wild. Survive as long as possible.
 Always act on the SHORT-TERM GOAL first. If no urgent goal, work toward the LONG-TERM GOAL.
 YOU MUST pick from VALID_ACTIONS (listed at the bottom). Never invent an action.
-Actions with a colon REQUIRE the full name including the target (e.g. pick_up_item:twigs, gather_resource:log).
-Writing just "pick_up_item" when the list shows "pick_up_item:twigs" is WRONG — you must copy the FULL string.
+Use the exact action name and target from the list.
 If your goal requires something not currently available (e.g. flint not nearby), pick explore — do NOT idle.
 """
 
@@ -92,7 +90,7 @@ def build_prompt(
     last_action: str | None = None,
     last_action_changed: bool | None = None,
     world_history: str = "",
-    valid_actions: str = "",
+    valid_actions: list | None = None,
     goals: str = "",
 ) -> str:
     """Build the full LLM prompt from current game state and recent memory.
@@ -104,7 +102,7 @@ def build_prompt(
         last_action:         Action chosen on the previous tick.
         last_action_changed: True if state changed after it, False if not, None if unknown.
         world_history:       Compact string of recently-seen-but-gone entities.
-        valid_actions:       Pre-filtered action list (blocked + redundant already removed).
+        valid_actions:       List of ActionOption objects (pre-filtered).
         goals:               Formatted goals block from GoalManager.
     """
 
@@ -136,7 +134,7 @@ def build_prompt(
     threat_lines = ""
     if state.get("threats"):
         threat_lines = "\n".join(
-            f"  ⚠ {t['name']} ({t.get('type', '?')}) at {t['distance']}m"
+            f" [WARN] {t['name']} ({t.get('type', '?')}) at {t['distance']}m [/WARN]"
             for t in state["threats"]
         )
 
@@ -197,6 +195,40 @@ def build_prompt(
     temp = state.get("temperature")
     temp_str = f" Temp:{temp}C" if temp is not None else ""
 
+    # Format valid actions list - group by action type
+    from collections import defaultdict
+
+    valid_actions = valid_actions or []
+    if valid_actions:
+        # Group actions by action name
+        grouped: dict[str, list[str | None]] = defaultdict(list)
+        for opt in valid_actions:
+            grouped[opt.action].append(opt.target)
+
+        # Format grouped actions - skip actions with no valid targets
+        action_lines = []
+        for action_name, targets in grouped.items():
+            # Filter out None targets and keep unique targets
+            valid_targets = [t for t in targets if t is not None]
+            if len(valid_targets) == 0:
+                # Skip actions without targets
+                continue
+            elif len(valid_targets) == 1:
+                # Single target - use singular format
+                action_lines.append(
+                    f'  {{"action":"{action_name}", "target":"{valid_targets[0]}"}}'
+                )
+            else:
+                # Multiple targets - use array format
+                targets_str = ", ".join(f'"{t}"' for t in valid_targets)
+                action_lines.append(
+                    f'  {{"action":"{action_name}", "targets":[{targets_str}]}}'
+                )
+
+        actions_text = "\n".join(action_lines)
+    else:
+        actions_text = '  {"action":"explore", "targets":["N","S","E","W","NE","NW","SE","SW"]}'
+
     return f"""{SYSTEM_RULES}
 {"[GOALS]" + chr(10) + "  " + goals + chr(10) + "[/GOALS]" + chr(10) if goals else ""}
 [STATUS]
@@ -221,10 +253,11 @@ def build_prompt(
 {memory_lines.rstrip() or "  (none)"}
 [/MEMORY]
 
-YOUR ONLY VALID CHOICES — pick exactly one, copy name verbatim:
+YOUR ONLY VALID CHOICES — pick exactly one action+target combination:
 [VALID_ACTIONS]
-  {valid_actions or "explore\n  idle"}
+{actions_text}
 [/VALID_ACTIONS]
 
-Reply ONLY with JSON — no extra text, no markdown, no explanation:
-{{"action":"exact_action_from_list_above","reason":"why"}}"""
+Reply ONLY with JSON — no extra text, no markdown, no explanation.
+Each action shows "targets": [...]. Pick ONE value from the targets array.
+Format: {{"action":"action_name","target":"chosen_target","reason":"why"}}"""
