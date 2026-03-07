@@ -6,6 +6,7 @@ and log changes to AgentMemory.
 """
 
 from memory import AgentMemory
+from models import GameState
 
 
 class InventoryTracker:
@@ -17,7 +18,7 @@ class InventoryTracker:
         """Clear stored inventory (e.g. on world reset)."""
         self._prev = None
 
-    def update(self, state: dict) -> dict[str, int]:
+    def update(self, state: GameState) -> dict[str, int]:
         """Parse inventory from state, log any deltas, return current counts."""
         current = self._parse(state)
         if self._prev is not None:  # skip delta on very first tick
@@ -34,10 +35,10 @@ class InventoryTracker:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse(state: dict) -> dict[str, int]:
+    def _parse(state: GameState) -> dict[str, int]:
         """Convert ["log x20", "axe"] -> {"log": 20, "axe": 1}."""
         result: dict[str, int] = {}
-        for item in state.get("inventory", []):
+        for item in state.inventory:
             if " x" in item:
                 name, _, count = item.rpartition(" x")
                 result[name.strip()] = int(count)
@@ -46,6 +47,9 @@ class InventoryTracker:
         return result
 
     def _log_delta(self, current: dict[str, int]) -> None:
+        if self._prev is None:
+            return  # Type guard: cannot compute delta without previous state
+
         gained, lost = [], []
         for key in set(current) | set(self._prev):
             prev = self._prev.get(key, 0)

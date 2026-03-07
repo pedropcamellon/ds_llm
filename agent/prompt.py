@@ -5,6 +5,8 @@ Keeping prompt logic separate makes it easy to tune instructions
 without touching agent plumbing.
 """
 
+from models import GameState
+
 # Available actions surfaced to the LLM
 ACTION_SPACE = [
     "move_to_food",
@@ -28,18 +30,6 @@ RECIPES: dict[str, dict[str, int]] = {
     "campfire": {"log": 2, "cutgrass": 2},
     "torch": {"twig": 2, "cutgrass": 2},
 }
-
-
-def _parse_inv(state: dict) -> dict[str, int]:
-    """Convert [\"log x20\", \"axe\"] -> {\"log\": 20, \"axe\": 1}."""
-    result: dict[str, int] = {}
-    for item in state.get("inventory", []):
-        if " x" in item:
-            name, _, count = item.rpartition(" x")
-            result[name.strip()] = int(count)
-        else:
-            result[item.strip()] = 1
-    return result
 
 
 def _prerequisites_section(inv: dict[str, int]) -> str:
@@ -84,7 +74,7 @@ If your goal requires something not currently available (e.g. flint not nearby),
 
 
 def build_prompt(
-    state: dict,
+    state: GameState,
     memory: list[dict],
     inv: dict[str, int] | None = None,
     last_action: str | None = None,
@@ -96,9 +86,9 @@ def build_prompt(
     """Build the full LLM prompt from current game state and recent memory.
 
     Args:
-        state:               Raw game state dict from game_state.json.
+        state:               GameState model instance.
         memory:              Recent memory entries from AgentMemory.
-        inv:                 Pre-parsed inventory counts.
+        inv:                 Pre-parsed inventory counts (optional, computed from state if not provided).
         last_action:         Action chosen on the previous tick.
         last_action_changed: True if state changed after it, False if not, None if unknown.
         world_history:       Compact string of recently-seen-but-gone entities.
@@ -132,11 +122,12 @@ def build_prompt(
 
     # Threat summary
     threat_lines = ""
-    if state.get("threats"):
+    if state.threats:
+        threat_lines += "[WARN]"
         threat_lines = "\n".join(
-            f" [WARN] {t['name']} ({t.get('type', '?')}) at {t['distance']}m [/WARN]"
-            for t in state["threats"]
+            f"  {t.name} at {t.distance}m" for t in state.threats
         )
+        threat_lines += "[/WARN]"
 
     # Critical stat warnings
     def stat_label(value, max_value):
@@ -147,7 +138,7 @@ def build_prompt(
             return f"{value}/{max_value}"
 
     # Inventory — compact single line using parsed counts
-    inv = inv if inv is not None else _parse_inv(state)
+    inv = inv if inv is not None else state.get_inventory_dict()
     inv_line = (
         ", ".join(
             f"{name} x{count}" if count > 1 else name
@@ -161,39 +152,34 @@ def build_prompt(
     # Nearby entities (top 5)
     nearby_lines = (
         "\n".join(
-            f"  - {e['name']} ({e['type']}) - {e['distance']}m"
-            for e in state.get("nearby_entities", [])[:5]
+            f"  - {e.name} ({e.type}) - {e.distance}m"
+            for e in state.nearby_entities[:5]
         )
         or "  (none)"
     )
 
     # Wilson's speech + action results since last export (buffered lists)
-    speech_log = state.get("speech_log") or []
-    action_log = state.get("action_log") or []
     feedback_lines = ""
-    for s in speech_log:
+    for s in state.speech_log:
         feedback_lines += f'  Wilson said: "{s}"\n'
-    for a in action_log:
-        if a.get("result") == "failed":
-            feedback_lines += (
-                f"  Action failed: {a.get('action')} — {a.get('reason', '?')}\n"
-            )
+    for a in state.action_log:
+        if a.result == "failed":
+            feedback_lines += f"  Action failed: {a.action} — {a.reason or '?'}\n"
         else:
-            feedback_lines += f"  Action ok: {a.get('action')}\n"
+            feedback_lines += f"  Action ok: {a.action}\n"
 
     # Current in-progress action (bufferedaction from behavior tree)
-    cur_action = state.get("current_action")
-    cur_target = state.get("action_target")
     current_action_line = ""
-    if cur_action:
+    if state.current_action:
         current_action_line = (
-            f"  Doing:{cur_action}" + (f" -> {cur_target}" if cur_target else "") + "\n"
+            f"  Doing: {state.current_action}"
+            + (f" -> {state.action_target}" if state.action_target else "")
+            + "\n"
         )
 
     # Weather
-    rain_str = " RAINING" if state.get("is_raining") else ""
-    temp = state.get("temperature")
-    temp_str = f" Temp:{temp}C" if temp is not None else ""
+    rain_str = " RAINING" if state.is_raining else ""
+    temp_str = f" Temp:{state.temperature}C" if state.temperature is not None else ""
 
     # Format valid actions list - group by action type
     from collections import defaultdict
@@ -227,14 +213,16 @@ def build_prompt(
 
         actions_text = "\n".join(action_lines)
     else:
-        actions_text = '  {"action":"explore", "targets":["N","S","E","W","NE","NW","SE","SW"]}'
+        actions_text = (
+            '  {"action":"explore", "targets":["N","S","E","W","NE","NW","SE","SW"]}'
+        )
 
     return f"""{SYSTEM_RULES}
 {"[GOALS]" + chr(10) + "  " + goals + chr(10) + "[/GOALS]" + chr(10) if goals else ""}
 [STATUS]
-  Day:{state.get("day", "?")} Phase:{state.get("phase", "?")} Season:{state.get("season", "?")}{rain_str}{temp_str}
-  Health:{stat_label(state.get("health"), 100)} Hunger:{stat_label(state.get("hunger"), 150)} Sanity:{stat_label(state.get("sanity"), 200)}
-  Equipped:{state.get("equipped", "none")}
+  Day:{state.day} Phase:{state.phase} Season:{state.season}{rain_str}{temp_str}
+  Health:{stat_label(state.health, 100)} Hunger:{stat_label(state.hunger, 150)} Sanity:{stat_label(state.sanity, 200)}
+  Equipped:{state.equipped or "none"}
 {current_action_line}[/STATUS]
 
 [INVENTORY]

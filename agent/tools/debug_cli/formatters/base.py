@@ -6,6 +6,8 @@ Defines the interface all formatters must implement (Interface Segregation).
 
 from abc import ABC, abstractmethod
 
+from models import GameState
+
 
 class OutputFormatter(ABC):
     """Abstract formatter for pipeline results."""
@@ -25,16 +27,15 @@ class OutputFormatter(ABC):
         pass
 
 
-def format_state_summary(state: dict) -> str:
+def format_state_summary(state: GameState) -> str:
     """Format a compact state summary (shared utility)."""
-    inv_items = state.get("inventory", [])
-    inv_display = ", ".join(inv_items[:10])
-    if len(inv_items) > 10:
-        inv_display += f" ... (+{len(inv_items) - 10} more)"
+    inv_display = ", ".join(state.inventory[:10])
+    if len(state.inventory) > 10:
+        inv_display += f" ... (+{len(state.inventory) - 10} more)"
 
-    return f"""Day {state.get("day", "?")}, {state.get("season", "?")}, {state.get("phase", "?")} (time: {state.get("time_of_day", 0):.2f})
-Health: {state.get("health", "?")} | Hunger: {state.get("hunger", "?")} | Sanity: {state.get("sanity", "?")}
-Temperature: {state.get("temperature", "?")}°C | Raining: {state.get("is_raining", False)}
+    return f"""Day {state.day}, {state.season}, {state.phase} (time: {state.time_of_day:.2f})
+Health: {state.health} | Hunger: {state.hunger} | Sanity: {state.sanity}
+Temperature: {state.temperature}°C | Raining: {state.is_raining}
 Inventory: {inv_display}
-Equipped: {state.get("equipped", "none")}
-Nearby entities: {len(state.get("nearby_entities", []))} | Threats: {len(state.get("threats", []))}"""
+Equipped: {state.equipped or "none"}
+Nearby entities: {len(state.nearby_entities)} | Threats: {len(state.threats)}"""

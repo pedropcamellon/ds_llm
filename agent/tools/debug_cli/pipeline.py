@@ -11,6 +11,7 @@ from action_planner import ActionPlanner
 from goal_manager import GoalManager
 from inventory_tracker import InventoryTracker
 from memory import AgentMemory
+from models import GameState
 from prompt import build_prompt
 from world_tracker import WorldTracker
 
@@ -20,7 +21,7 @@ class PipelineResult:
 
     def __init__(
         self,
-        state: dict,
+        state: GameState,
         inv,
         goals_text: str,
         short_term_goal,
@@ -50,7 +51,7 @@ class DebugPipeline:
         self.goal_manager = GoalManager()
         self.action_planner = ActionPlanner()
 
-    def run(self, state: dict) -> PipelineResult:
+    def run(self, state: GameState) -> PipelineResult:
         """
         Run the full pipeline: inventory → goals → actions → prompt.
 

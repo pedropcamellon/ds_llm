@@ -7,6 +7,8 @@ Single responsibility: file I/O for state snapshots.
 import json
 from pathlib import Path
 
+from models import GameState
+
 
 class StateLoadError(Exception):
     """Raised when state file cannot be loaded."""
@@ -18,7 +20,7 @@ class StateLoader:
     """Loads game state snapshots from JSON files."""
 
     @staticmethod
-    def load(path: Path) -> dict:
+    def load(path: Path) -> GameState:
         """
         Load game state from JSON file.
 
@@ -26,7 +28,7 @@ class StateLoader:
             path: Path to game_state.json file
 
         Returns:
-            Parsed game state dict
+            Parsed GameState model instance
 
         Raises:
             StateLoadError: If file doesn't exist or parsing fails
@@ -36,7 +38,8 @@ class StateLoader:
 
         try:
             with open(path) as f:
-                state = json.load(f)
+                data = json.load(f)
+                state = GameState.model_validate(data)
                 return state
         except json.JSONDecodeError as e:
             raise StateLoadError(f"Invalid JSON in {path}: {e}")

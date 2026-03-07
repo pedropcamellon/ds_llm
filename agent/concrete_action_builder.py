@@ -16,7 +16,7 @@ from entity_sets import (
     HOSTILE_TYPES,
     PICKUP_PREFABS,
 )
-from models import ActionOption
+from models import ActionOption, GameState
 from prereq_filter import PrereqFilter
 
 
@@ -26,7 +26,7 @@ class ConcreteActionBuilder:
     def __init__(self, prereq_filter: PrereqFilter | None = None) -> None:
         self._filter = prereq_filter or PrereqFilter()
 
-    def build(self, inv: dict[str, int], state: dict) -> list[ActionOption]:
+    def build(self, inv: dict[str, int], state: GameState) -> list[ActionOption]:
         """Return concrete, specific action options the LLM can pick from.
 
         Order (most specific / high priority first):
@@ -51,7 +51,11 @@ class ConcreteActionBuilder:
                 spec = self._filter.specs[action]
                 if spec.requires:
                     cost = "+".join(f"{k}x{v}" for k, v in spec.requires.items())
-                    actions.append(ActionOption(action="craft_item", target=f"{item_name} ({cost})"))
+                    actions.append(
+                        ActionOption(
+                            action="craft_item", target=f"{item_name} ({cost})"
+                        )
+                    )
                 else:
                     actions.append(ActionOption(action="craft_item", target=item_name))
 
@@ -63,7 +67,7 @@ class ConcreteActionBuilder:
 
         # Scan up to 30 nearby entities (Lua exports many; first 10 are often
         # ambient: snow, rain, flowers, flies which all come before resources)
-        nearby = state.get("nearby_entities") or []
+        nearby = state.nearby_entities or []
 
         # 3. Pick-up specific ground items from nearby loose entities.
         # Track which resources are already available as loose pickups so step 4
@@ -71,8 +75,8 @@ class ConcreteActionBuilder:
         pickup_resources: set[str] = set()
         seen_pickups: set[str] = set()
         for entity in nearby[:30]:
-            name = (entity.get("name") or "").lower()
-            etype = (entity.get("type") or "").lower()
+            name = (entity.name or "").lower()
+            etype = (entity.type or "").lower()
             # Never treat a harvestable plant as a ground item — it yields
             # resources only via gather_resource (step 4), not pick_up_item.
             if etype == "harvestable":
@@ -81,8 +85,10 @@ class ConcreteActionBuilder:
             if (name in PICKUP_PREFABS or is_item_type) and name in PICKUP_PREFABS:
                 if name not in seen_pickups:
                     seen_pickups.add(name)
-                    dist = entity.get("distance", "?")
-                    actions.append(ActionOption(action="pick_up_item", target=f"{name} ({dist}m)"))
+                    dist = entity.distance
+                    actions.append(
+                        ActionOption(action="pick_up_item", target=f"{name} ({dist}m)")
+                    )
                 pickup_resources.add(name)
 
         # 4. Gather specific resources from nearby harvestable entities.
@@ -90,8 +96,8 @@ class ConcreteActionBuilder:
         # gather_resource:twigs when pick_up_item:twigs is already listed).
         seen_yields: set[str] = set()
         for entity in nearby[:30]:
-            name = (entity.get("name") or "").lower()
-            etype = (entity.get("type") or "").lower()
+            name = (entity.name or "").lower()
+            etype = (entity.type or "").lower()
             if name in HOSTILE_ENTITIES or etype in HOSTILE_TYPES:
                 continue
             if name in PICKUP_PREFABS:
@@ -109,26 +115,40 @@ class ConcreteActionBuilder:
                 continue  # loose item already on the ground — no need to harvest
             if yielded not in seen_yields:
                 seen_yields.add(yielded)
-                dist = entity.get("distance", "?")
-                actions.append(ActionOption(action="gather_resource", target=f"{yielded} ({dist}m)"))
+                dist = entity.distance or "?"
+                actions.append(
+                    ActionOption(
+                        action="gather_resource", target=f"{yielded} ({dist}m)"
+                    )
+                )
 
         # Fallback gather when nothing specific is visible
         if not seen_yields:
-            actions.append(ActionOption(action="gather_resource", target="find something to harvest"))
+            actions.append(
+                ActionOption(
+                    action="gather_resource", target="find something to harvest"
+                )
+            )
 
         # 5. Eat specific food from inventory
         edibles = sorted(
             item for item in inv_norm if item in EDIBLE_PREFABS and inv_norm[item] > 0
         )
         for food in edibles:
-            actions.append(ActionOption(action="eat_food", target=f"{food} (have {inv_norm[food]})"))
+            actions.append(
+                ActionOption(
+                    action="eat_food", target=f"{food} (have {inv_norm[food]})"
+                )
+            )
 
         # 6. Threats → attack or run
-        threats = state.get("threats") or []
+        threats = state.threats or []
         for threat in threats[:2]:
-            tname = (threat.get("name") or "unknown").lower()
-            tdist = threat.get("distance", "?")
-            actions.append(ActionOption(action="attack_enemy", target=f"{tname} ({tdist}m)"))
+            tname = (threat.name or "unknown").lower()
+            tdist = threat.distance or "?"
+            actions.append(
+                ActionOption(action="attack_enemy", target=f"{tname} ({tdist}m)")
+            )
         if threats:
             actions.append(ActionOption(action="run_from_enemy"))
 

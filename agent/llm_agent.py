@@ -18,7 +18,7 @@ from action_planner import (
 )  # TODO GoalPlanner alias kept for attribute names
 from inventory_tracker import InventoryTracker
 from memory import AgentMemory
-from models import ActionOption
+from models import ActionOption, GameState
 from ollama_client import OllamaClient
 from prompt import build_prompt
 from state_reader import StateReader
@@ -65,7 +65,7 @@ class DSAIAgent:
     @staticmethod
     def _random_explore_action(reason: str) -> dict:
         """Return explore action with random direction to avoid directional bias.
-        
+
         TODO: Future improvements for exploration strategy:
         - Track previously explored directions and prefer unexplored ones
         - Avoid immediate backtracking (opposite direction of last explore)
@@ -102,7 +102,7 @@ class DSAIAgent:
                 self._random_explore_action("Game over — waiting for new world")
             )
 
-        if state.get("health", 0) <= 0:
+        if state.health <= 0:
             print("[Agent] You died — waiting for new world")
             return None
 
@@ -193,12 +193,14 @@ class DSAIAgent:
                 f"Rejected '{chosen_action}' (not in valid actions), forced explore",
                 "system",
             )
-            action = self._random_explore_action(f"'{chosen_action}' not a valid action")
+            action = self._random_explore_action(
+                f"'{chosen_action}' not a valid action"
+            )
         elif chosen_action in actions_by_name:
             # Validate target if needed
             valid_opts = actions_by_name[chosen_action]
             needs_target = any(opt.target is not None for opt in valid_opts)
-            
+
             if needs_target and not chosen_target:
                 print(
                     f"[Agent] INVALID: '{chosen_action}' missing required target — forcing random explore"
@@ -235,15 +237,15 @@ class DSAIAgent:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _emergency_override(self, state: dict, inv: dict[str, int]) -> dict | None:
+    def _emergency_override(self, state: GameState, inv: dict[str, int]) -> dict | None:
         """Return a hardcoded action for critical situations, or None.
 
         Raises StateFieldError if required vitals are missing in the state.
         Callers must catch this and emit explore + warn.
         """
         health = _require_field(state, "health", float)
-        threats = state.get("threats") or []  # None → no threats (safe)
-        time_of_day = state.get("time_of_day") or 0.0  # None → assume daytime (safe)
+        threats = state.threats or []  # None → no threats (safe)
+        time_of_day = state.time_of_day or 0.0  # None → assume daytime (safe)
 
         if health < 20:
             print("[Agent] CRITICAL: Health very low!")
@@ -251,10 +253,12 @@ class DSAIAgent:
 
         if threats:
             t = threats[0]
-            print(f"[Agent] WARNING: {t['name']} nearby!")
+            tname = (t.name or "unknown").lower()
+            tdist = t.distance or "?"
+            print(f"[Agent] WARNING: {tname} nearby!")
             return {
                 "action": "run_from_enemy",
-                "reason": f"Hostile {t['name']} at {t['distance']}m",
+                "reason": f"Hostile {tname} at {tdist}m",
             }
 
         if time_of_day > 0.75:

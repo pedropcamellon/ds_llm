@@ -14,6 +14,7 @@ It produces:
 from dataclasses import dataclass, field
 from enum import Enum
 
+from models import GameState
 
 class StateFieldError(ValueError):
     """Raised when a required game-state field is missing or None.
@@ -24,13 +25,13 @@ class StateFieldError(ValueError):
     """
 
 
-def _require_field(state: dict, key: str, cast: type = str):
+def _require_field(state: GameState, key: str, cast: type = str):
     """Extract a required state field, raising StateFieldError if absent.
 
-    Never use `state.get(key) or default` for safety-critical fields — that
+    Never use defaults for safety-critical fields — that
     silently swallows None/0/empty-string and causes wrong decisions.
     """
-    value = state.get(key)
+    value = getattr(state, key, None)
     if value is None:
         raise StateFieldError(
             f"[StateFieldError] Required field '{key}' is None in game_state — "
@@ -134,13 +135,13 @@ class GoalManager:
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
-    def get_long_term_goal(self, state: dict) -> LongTermGoal:
+    def get_long_term_goal(self, state: GameState) -> LongTermGoal:
         """Return the season-appropriate long-term goal."""
         season = _require_field(state, "season", str).lower()
         return self._LONG_TERM.get(season, self._LONG_TERM["autumn"])
 
     def get_short_term_goal(
-        self, state: dict, inv: dict[str, int]
+        self, state: GameState, inv: dict[str, int]
     ) -> ShortTermGoal | None:
         """Return the most urgent short-term goal, or None if stable.
 
@@ -152,8 +153,8 @@ class GoalManager:
         sanity = _require_field(state, "sanity", float)
         phase = _require_field(state, "phase", str).lower()
         # temperature is optional (thermometer is a crafted item; may not exist yet)
-        temperature = state.get("temperature")
-        threats = state.get("threats") or []
+        temperature = state.temperature
+        threats = state.threats or []
 
         # ── CRITICAL ──────────────────────────────────────────────────
         if health < 20:
@@ -165,8 +166,8 @@ class GoalManager:
             )
 
         if threats:
-            name = threats[0].get("name", "unknown")
-            dist = threats[0].get("distance", "?")
+            name = threats[0].name or "unknown"
+            dist = threats[0].distance or "?"
             return ShortTermGoal(
                 urgency=Urgency.CRITICAL,
                 description=f"Threat: {name} at {dist}m — run or fight.",
@@ -217,7 +218,7 @@ class GoalManager:
 
         return None
 
-    def format_for_prompt(self, state: dict, inv: dict[str, int]) -> str:
+    def format_for_prompt(self, state: GameState, inv: dict[str, int]) -> str:
         """Return the formatted [GOALS] block content (no XML tags)."""
         ltg = self.get_long_term_goal(state)
         stg = self.get_short_term_goal(state, inv)
@@ -232,17 +233,16 @@ class GoalManager:
 
         return "\n  ".join(lines)
 
-    # ------------------------------------------------------------------ #
-    # Private helpers                                                      #
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
 
-    def _fire_nearby(self, state: dict) -> bool:
-        return any(
-            e.get("name", "") in _FIRE_PREFABS
-            for e in (state.get("nearby_entities") or [])
-        )
+    def _fire_nearby(self, state: GameState) -> bool:
+        return any(e.name in _FIRE_PREFABS for e in (state.nearby_entities or []))
 
-    def _fire_goal(self, state: dict, inv: dict[str, int], phase: str) -> ShortTermGoal:
+    def _fire_goal(
+        self, state: GameState, inv: dict[str, int], phase: str
+    ) -> ShortTermGoal:
         if self._fire_nearby(state):
             return ShortTermGoal(
                 urgency=Urgency.LOW,

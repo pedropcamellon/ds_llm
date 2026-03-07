@@ -9,6 +9,8 @@ visible so the agent can reason about resources it saw a few ticks ago.
 import time
 from dataclasses import dataclass
 
+from models import GameState
+
 
 @dataclass
 class SeenEntity:
@@ -39,18 +41,18 @@ class WorldTracker:
     # Public interface
     # ------------------------------------------------------------------
 
-    def update(self, state: dict) -> None:
+    def update(self, state: GameState) -> None:
         """Ingest the current nearby_entities list and expire stale entries."""
         now = time.time()
-        for ent in state.get("nearby_entities", []):
-            key = ent.get("name", "unknown")
+        for ent in state.nearby_entities:
+            key = ent.name if ent.name else "unknown"
             if key in self._seen:
                 self._seen[key].last_seen = now
                 self._seen[key].times_seen += 1
             else:
                 self._seen[key] = SeenEntity(
                     name=key,
-                    type=ent.get("type", "unknown"),
+                    type=ent.type if ent.type else "unknown",
                     last_seen=now,
                 )
 
@@ -58,18 +60,18 @@ class WorldTracker:
         cutoff = now - self.ttl
         self._seen = {k: v for k, v in self._seen.items() if v.last_seen >= cutoff}
 
-    def not_currently_visible(self, state: dict) -> list[SeenEntity]:
+    def not_currently_visible(self, state: GameState) -> list[SeenEntity]:
         """Return entities seen before but absent from current nearby_entities.
 
         Sorted most-recently-seen first. Capped at max_entries.
         Excludes entities still in the current snapshot (already shown in [NEARBY]).
         """
-        current_names = {e.get("name") for e in state.get("nearby_entities", [])}
+        current_names = {e.name for e in state.nearby_entities}
         past = [e for e in self._seen.values() if e.name not in current_names]
         past.sort(key=lambda e: e.last_seen, reverse=True)
         return past[: self.max_entries]
 
-    def summary_lines(self, state: dict, now: float | None = None) -> str:
+    def summary_lines(self, state: GameState, now: float | None = None) -> str:
         """Return a compact prompt-ready string of recently-seen-but-gone entities."""
         now = now or time.time()
         past = self.not_currently_visible(state)

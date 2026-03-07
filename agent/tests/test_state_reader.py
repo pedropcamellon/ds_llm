@@ -5,6 +5,8 @@ import pytest
 from pathlib import Path
 from state_reader import StateReader
 
+from models import GameState
+
 
 @pytest.fixture
 def state_file(tmp_path):
@@ -16,7 +18,7 @@ def reader(state_file):
     return StateReader(state_file)
 
 
-def _write(state_file: Path, state: dict) -> None:
+def _write(state_file: Path, state: GameState) -> None:
     state_file.write_text(json.dumps(state))
 
 
@@ -28,7 +30,7 @@ def test_read_returns_none_when_file_missing(reader):
 
 
 def test_read_returns_dict(reader, state_file):
-    _write(state_file, {"day": 1, "health": 100})
+    _write(state_file, GameState(day=1, health=100))
     result = reader.read()
     assert result == {"day": 1, "health": 100}
 
@@ -42,12 +44,12 @@ def test_read_returns_none_on_invalid_json(reader, state_file):
 
 
 def test_first_read_always_changed(reader):
-    state = {"day": 1}
+    state = GameState(day=1)
     assert reader.has_changed(state) is True
 
 
 def test_same_state_not_changed(reader):
-    state = {"day": 1, "health": 100}
+    state = GameState(day=1, health=100)
     reader.has_changed(state)  # first call — marks as seen
     assert reader.has_changed(state) is False
 
