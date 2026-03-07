@@ -25,6 +25,9 @@ class LlmClient:
         """
         try:
             raw_response = self.client.generate(prompt)
+            # Handle None response from failed API call
+            if raw_response is None:
+                raw_response = ""
             action = self.parser.parse(raw_response)
             return {"raw": raw_response, "action": action}
         except Exception as e:

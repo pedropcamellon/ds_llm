@@ -73,7 +73,15 @@ class TextFormatter(OutputFormatter):
         if llm_response:
             sections.append("\n" + "=" * 80)
             sections.append("[LLM RESPONSE]")
-            sections.append(llm_response.get("raw", ""))
+            
+            # Show error if present
+            if "error" in llm_response:
+                sections.append(f"ERROR: {llm_response['error']}")
+            
+            raw_response = llm_response.get("raw") or ""
+            if raw_response:
+                sections.append(raw_response)
+            
             sections.append("\n[PARSED ACTION]")
             sections.append(json.dumps(llm_response.get("action", {}), indent=2))
 
