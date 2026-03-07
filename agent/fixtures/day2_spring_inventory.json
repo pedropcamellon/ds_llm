@@ -1,0 +1,39 @@
+{
+  "day": 2,
+  "time_of_day": 0.35,
+  "phase": "day",
+  "season": "spring",
+  "health": 120,
+  "hunger": 95,
+  "sanity": 180,
+  "temperature": 25,
+  "is_raining": false,
+  "inventory": ["cutgrass x12", "twigs x8", "log x6", "axe"],
+  "equipped": "axe",
+  "current_action": null,
+  "action_target": null,
+  "position": {"x": 220.3, "z": -115.7},
+  "nearby_entities": [
+    {"name": "flint", "type": "other", "distance": 3.2},
+    {"name": "rocks", "type": "other", "distance": 5.8},
+    {"name": "twigs", "type": "other", "distance": 7.1},
+    {"name": "log", "type": "other", "distance": 9.4},
+    {"name": "carrot", "type": "other", "distance": 11.2},
+    {"name": "berries", "type": "other", "distance": 14.5},
+    {"name": "evergreen", "type": "harvestable", "distance": 16.8},
+    {"name": "sapling", "type": "harvestable", "distance": 18.3},
+    {"name": "berrybush", "type": "harvestable", "distance": 20.1},
+    {"name": "grass", "type": "harvestable", "distance": 22.5},
+    {"name": "rock1", "type": "harvestable", "distance": 25.7},
+    {"name": "butterfly", "type": "other", "distance": 8.9}
+  ],
+  "threats": [],
+  "speech_log": ["I could use some more supplies."],
+  "action_log": [
+    {"result": "success", "action": "chop_tree", "reason": null}
+  ],
+  "memory_log": [
+    {"source": "inventory", "text": "Gained: log x3"},
+    {"source": "llm_reason", "text": "Stockpiling resources for base camp"}
+  ]
+}
