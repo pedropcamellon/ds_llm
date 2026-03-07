@@ -72,10 +72,23 @@ def main():
         state,
         memory=[],  # no memory for single-shot debug
         inv=inv,
-        valid_actions="\n  ".join(concrete_actions),
+        valid_actions=concrete_actions,
         goals=goals_text,
         world_history=world_tracker.summary_lines(state),
     )
+
+    # Convert actions to display format for JSON output
+    actions_display = [
+        {"action": opt.action, "target": opt.target, "reason": opt.reason}
+        for opt in concrete_actions
+    ]
+
+    # Group actions by action name for formatted display
+    from collections import defaultdict
+
+    grouped_actions: dict[str, list[str | None]] = defaultdict(list)
+    for opt in concrete_actions:
+        grouped_actions[opt.action].append(opt.target)
 
     # Output formatting
     if args.json:
@@ -83,7 +96,7 @@ def main():
             "state_summary": _state_summary(state),
             "goals": goals_text,
             "short_term_goal": stg.description if stg else None,
-            "concrete_actions": concrete_actions,
+            "concrete_actions": actions_display,
             "prompt": prompt_text,
         }
         if args.with_llm:
@@ -91,8 +104,14 @@ def main():
         print(json.dumps(output, indent=2))
     elif args.actions_only:
         print("[CONCRETE ACTIONS]")
-        for action in concrete_actions:
-            print(f"  {action}")
+        for action_name, targets in grouped_actions.items():
+            valid_targets = [t for t in targets if t is not None]
+            if len(valid_targets) == 0:
+                # Skip actions without targets
+                continue
+            else:
+                targets_str = ", ".join(f'"{t}"' for t in valid_targets)
+                print(f'  {{"action": "{action_name}", "targets": [{targets_str}]}}')
     elif args.prompt_only:
         print(prompt_text)
     else:
@@ -107,8 +126,18 @@ def main():
             print(f"\nShort-term goal: {stg.description} (urgency: {stg.urgency.name})")
         print("\n" + "=" * 80)
         print(f"[CONCRETE ACTIONS] ({len(concrete_actions)} available)")
-        for action in concrete_actions[:20]:  # show first 20
-            print(f"  {action}")
+        displayed = 0
+        for action_name, targets in grouped_actions.items():
+            if displayed >= 20:
+                break
+            valid_targets = [t for t in targets if t is not None]
+            if len(valid_targets) == 0:
+                # Skip actions without targets
+                continue
+            else:
+                targets_str = ", ".join(f'"{t}"' for t in valid_targets)
+                print(f'  {{"action": "{action_name}", "targets": [{targets_str}]}}')
+            displayed += 1
         if len(concrete_actions) > 20:
             print(f"  ... and {len(concrete_actions) - 20} more")
         print("\n" + "=" * 80)
