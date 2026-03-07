@@ -2,8 +2,7 @@
 concrete_action_builder.py — ConcreteActionBuilder.
 
 Single responsibility: translate a live game state + inventory into a
-prioritised list of *specific* action strings for the LLM (e.g.
-``eat_food:berries  (have 3)`` instead of the vague ``eat_food``).
+prioritised list of *specific* action options for the LLM.
 
 Depends on PrereqFilter for prerequisite checking and on entity_sets for
 prefab classification. Has no knowledge of prompts or HTTP clients.
@@ -17,6 +16,7 @@ from entity_sets import (
     HOSTILE_TYPES,
     PICKUP_PREFABS,
 )
+from models import ActionOption
 from prereq_filter import PrereqFilter
 
 
@@ -26,39 +26,40 @@ class ConcreteActionBuilder:
     def __init__(self, prereq_filter: PrereqFilter | None = None) -> None:
         self._filter = prereq_filter or PrereqFilter()
 
-    def build(self, inv: dict[str, int], state: dict) -> list[str]:
-        """Return concrete, specific actions the LLM can pick from.
+    def build(self, inv: dict[str, int], state: dict) -> list[ActionOption]:
+        """Return concrete, specific action options the LLM can pick from.
 
         Order (most specific / high priority first):
           1. Craft actions (ingredient costs shown inline)
           2. Tool-gated actions (chop_tree, mine_rock)
-          3. pick_up_item:<name> for nearby loose items
-          4. gather_resource:<resource> for nearby harvestable entities
-          5. eat_food:<item> per edible in inventory
-          6. attack_enemy:<name> / run_from_enemy for active threats
+          3. pick_up_item with target for nearby loose items
+          4. gather_resource with target for nearby harvestable entities
+          5. eat_food with target per edible in inventory
+          6. attack_enemy / run_from_enemy for active threats
           7. explore / idle (always last)
         """
         from action_specs import normalize_inv  # local to avoid circular at module load
 
         inv_norm = normalize_inv(inv)
         base_valid = set(self._filter.get_valid_actions(inv))
-        actions: list[str] = []
+        actions: list[ActionOption] = []
 
         # 1. Craft actions — only those whose prereqs are met
         for action in sorted(base_valid):
             if action.startswith("craft_item:"):
+                item_name = action.replace("craft_item:", "")
                 spec = self._filter.specs[action]
                 if spec.requires:
-                    cost = "+".join(f"{k}×{v}" for k, v in spec.requires.items())
-                    actions.append(f"{action} ({cost})")
+                    cost = "+".join(f"{k}x{v}" for k, v in spec.requires.items())
+                    actions.append(ActionOption(action="craft_item", target=f"{item_name} ({cost})"))
                 else:
-                    actions.append(action)
+                    actions.append(ActionOption(action="craft_item", target=item_name))
 
         # 2. Tool-gated actions
         if "chop_tree" in base_valid:
-            actions.append("chop_tree")
+            actions.append(ActionOption(action="chop_tree"))
         if "mine_rock" in base_valid:
-            actions.append("mine_rock")
+            actions.append(ActionOption(action="mine_rock"))
 
         # Scan up to 30 nearby entities (Lua exports many; first 10 are often
         # ambient: snow, rain, flowers, flies which all come before resources)
@@ -81,7 +82,7 @@ class ConcreteActionBuilder:
                 if name not in seen_pickups:
                     seen_pickups.add(name)
                     dist = entity.get("distance", "?")
-                    actions.append(f"pick_up_item:{name}  ({dist}m away)")
+                    actions.append(ActionOption(action="pick_up_item", target=f"{name} ({dist}m)"))
                 pickup_resources.add(name)
 
         # 4. Gather specific resources from nearby harvestable entities.
@@ -109,32 +110,30 @@ class ConcreteActionBuilder:
             if yielded not in seen_yields:
                 seen_yields.add(yielded)
                 dist = entity.get("distance", "?")
-                actions.append(f"gather_resource:{yielded}  ({name}, {dist}m away)")
+                actions.append(ActionOption(action="gather_resource", target=f"{yielded} ({dist}m)"))
 
         # Fallback gather when nothing specific is visible
         if not seen_yields:
-            actions.append("gather_resource  (find something to harvest)")
+            actions.append(ActionOption(action="gather_resource", target="find something to harvest"))
 
         # 5. Eat specific food from inventory
         edibles = sorted(
             item for item in inv_norm if item in EDIBLE_PREFABS and inv_norm[item] > 0
         )
         for food in edibles:
-            actions.append(f"eat_food:{food}  (have {inv_norm[food]})")
-        if not edibles and "eat_food" in base_valid:
-            actions.append("eat_food  (check inventory for any edible)")
+            actions.append(ActionOption(action="eat_food", target=f"{food} (have {inv_norm[food]})"))
 
         # 6. Threats → attack or run
         threats = state.get("threats") or []
         for threat in threats[:2]:
             tname = (threat.get("name") or "unknown").lower()
             tdist = threat.get("distance", "?")
-            actions.append(f"attack_enemy:{tname}  ({tdist}m away)")
+            actions.append(ActionOption(action="attack_enemy", target=f"{tname} ({tdist}m)"))
         if threats:
-            actions.append("run_from_enemy")
+            actions.append(ActionOption(action="run_from_enemy"))
 
-        # 7. Exploration fallbacks (always available)
-        actions.append("explore")
-        actions.append("idle")
+        # 7. Exploration fallback (always available)
+        for direction in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
+            actions.append(ActionOption(action="explore", target=direction))
 
         return actions

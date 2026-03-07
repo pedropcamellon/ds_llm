@@ -8,6 +8,7 @@ Callers import only this module — they never depend on the internals.
 """
 
 from action_specs import ACTION_SPECS, ActionSpec
+from models import ActionOption
 from concrete_action_builder import ConcreteActionBuilder
 from prereq_filter import PrereqFilter
 
@@ -44,6 +45,8 @@ class ActionPlanner:
     # Delegated ConcreteActionBuilder API
     # ------------------------------------------------------------------
 
-    def get_concrete_actions(self, inv: dict[str, int], state: dict) -> list[str]:
+    def get_concrete_actions(
+        self, inv: dict[str, int], state: dict
+    ) -> list[ActionOption]:
         """Specific, labelled actions derived from inventory + live game state."""
         return self._builder.build(inv, state)
