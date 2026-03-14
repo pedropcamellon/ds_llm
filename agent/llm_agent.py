@@ -222,16 +222,40 @@ class DSAIAgent:
 
     def run(self, interval: float = 5.0) -> None:
         """Poll decide() every interval seconds until interrupted."""
-        print(
-            f"[DSAIAgent] Starting — model={self.llm_client.model}, interval={interval}s"
+        logger.info(
+            f"[DSAIAgent] Starting agent - model={self.llm_client.model}, interval={interval}s"
         )
-        print("[DSAIAgent] Press Ctrl+C to stop\n")
-        try:
-            while True:
+        logger.info("[DSAIAgent] Press Ctrl+C to stop")
+
+        while True:
+            try:
                 self.decide()
-                time.sleep(interval)
-        except KeyboardInterrupt:
-            print(f"\n[DSAIAgent] Stopped after {self.decision_count} decisions.")
+            except KeyboardInterrupt:
+                logger.info(f"Stopped after {self.decision_count} decisions")
+
+            except Exception as exc:
+                if self._is_non_retryable_error(exc):
+                    logger.critical(
+                        f"Fatal non-retryable error in decide().Stopping agent loop. {exc}"
+                    )
+                    break
+
+                # Keep loop alive on transient failures; LLM failures are already
+                # handled in decide(), but this protects the loop from other
+                # unexpected retryable exceptions.
+                logger.exception(f"Retryable runtime error in decide(): {exc}")
+            time.sleep(interval)
+
+    @staticmethod
+    def _is_non_retryable_error(exc: Exception) -> bool:
+        """Classify errors that should stop the infinite loop.
+
+        Non-retryable errors are usually deterministic/configuration issues
+        that will repeat every tick until fixed (for example unknown season).
+        """
+        if isinstance(exc, (KeyError, ValueError)):
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Private helpers
