@@ -274,7 +274,7 @@ class DSAIAgent:
         Non-retryable errors are usually deterministic/configuration issues
         that will repeat every tick until fixed (for example unknown season).
         """
-        if isinstance(exc, (KeyError, ValueError)):
+        if isinstance(exc, (KeyError, ValueError, NameError)):
             return True
         return False
 
