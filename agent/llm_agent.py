@@ -131,11 +131,11 @@ class DSAIAgent:
         try:
             override = self._emergency_override(state, inv)
         except StateFieldError as exc:
-            print(f"\n{'!' * 60}")
+            logger.error(f"\n{'!' * 60}")
 
             logger.error(f"State validation failed: {exc}")
             logger.error("Fix Lua exporter then resume - emitting random explore")
-            print(f"{'!' * 60}\n")
+            logger.error(f"{'!' * 60}\n")
             return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
         if override:
             logger.info(
@@ -148,14 +148,19 @@ class DSAIAgent:
         # PrereqFilter already excludes blocked and redundant actions.
         concrete_actions = self.goal_planner.get_concrete_actions(inv, state)
 
+        logger.info(f"Day {state.day} {state.phase}")
+
         # Derive goals; preferred_actions bubble relevant variants to the top
         try:
             stg = self.goal_manager.get_short_term_goal(state, inv)
-            goals = self.goal_manager.format_for_prompt(state, inv)
+            goals_prompt = self.goal_manager.format_for_prompt(state, inv)
+            goals_cli = self.goal_manager.format_for_cli(state, inv)
         except StateFieldError as exc:
             logger.error(f"Goal manager failed: {exc}")
             logger.error("Fix Lua exporter then resume - emitting random explore")
             return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
+
+        logger.debug(goals_cli)
 
         # Bubble preferred actions to the top of the concrete list
         if stg and stg.preferred_actions:
@@ -165,14 +170,10 @@ class DSAIAgent:
 
             preferred = [a for a in concrete_actions if _is_preferred(a)]
             rest = [a for a in concrete_actions if not _is_preferred(a)]
-            ordered: list[ActionOption] = preferred + rest
+            action_options_sorted: list[ActionOption] = preferred + rest
         else:
-            ordered: list[ActionOption] = concrete_actions
+            action_options_sorted: list[ActionOption] = concrete_actions
 
-        logger.info(f"Day {state.day} {state.phase} - {len(ordered)} valid actions")
-        logger.debug(f"Goals: {goals}")
-
-        # Normal path: ask the LLM
         prompt = build_prompt(
             state,
             self.memory.recent(),
@@ -180,11 +181,11 @@ class DSAIAgent:
             last_action=self._last_action,
             last_action_changed=self._last_action_changed,
             world_history=self.world_tracker.summary_lines(state),
-            valid_actions=ordered,
-            goals=goals,
+            valid_actions=action_options_sorted,
+            goals=goals_prompt,
         )
 
-        logger.debug("LLM prompt sent:\n%s", prompt)
+        logger.debug(f" -- LLM Prompt -- \n{60 * '='}\n{prompt}\n{60 * '='}")
 
         try:
             raw = self.llm_client.generate(prompt)
@@ -199,7 +200,7 @@ class DSAIAgent:
         # Validate: check if the LLM's action+target exists in our offered list
         # Build lookup: action name -> list of ActionOption objects
         actions_by_name: dict[str, list[ActionOption]] = {}
-        for opt in ordered:
+        for opt in action_options_sorted:
             actions_by_name.setdefault(opt.action, []).append(opt)
 
         chosen_action = action["action"]
@@ -207,7 +208,7 @@ class DSAIAgent:
 
         # Check if action name is valid
         if chosen_action not in actions_by_name:
-            print(
+            logger.info(
                 f"[Agent] INVALID: '{chosen_action}' not in valid_actions — forcing random explore"
             )
             self.memory.add(
@@ -223,7 +224,7 @@ class DSAIAgent:
             needs_target = any(opt.target is not None for opt in valid_opts)
 
             if needs_target and not chosen_target:
-                print(
+                logger.info(
                     f"[Agent] INVALID: '{chosen_action}' missing required target — forcing random explore"
                 )
                 self.memory.add(
@@ -244,9 +245,8 @@ class DSAIAgent:
     def run(self, interval: float = 5.0) -> None:
         """Poll decide() every interval seconds until interrupted."""
         logger.info(
-            f"[DSAIAgent] Starting agent - model={self.llm_client.model}, interval={interval}s"
+            f"Starting agent - model={self.llm_client.model}, interval={interval}s \nPress Ctrl+C to stop..."
         )
-        logger.info("[DSAIAgent] Press Ctrl+C to stop")
 
         while True:
             try:
@@ -288,19 +288,19 @@ class DSAIAgent:
         Raises StateFieldError if required vitals are missing in the state.
         Callers must catch this and emit explore + warn.
         """
-        health = _require_field(state, "health", float)
+        health = require_field(state, "health", float)
         threats = state.threats or []  # None → no threats (safe)
         time_of_day = state.time_of_day or 0.0  # None → assume daytime (safe)
 
         if health < 20:
-            print("[Agent] CRITICAL: Health very low!")
+            logger.warning(f"CRITICAL: Health very low ({health}/150)")
             return {"action": "eat_food", "reason": "Health critically low"}
 
         if threats:
             t = threats[0]
             tname = (t.name or "unknown").lower()
             tdist = t.distance or "?"
-            print(f"[Agent] WARNING: {tname} nearby!")
+            logger.warning(f"THREAT: {tname} at {tdist}m")
             return {
                 "action": "run_from_enemy",
                 "reason": f"Hostile {tname} at {tdist}m",
@@ -313,10 +313,10 @@ class DSAIAgent:
                 valid_set = set(self.goal_planner.get_valid_actions(inv))
                 for act in stg.preferred_actions:
                     if act in valid_set:
-                        print(f"[Agent] DUSK/NIGHT: {stg.description[:60]}")
+                        logger.warning(f"DUSK/NIGHT: {stg.description[:60]}")
                         return {"action": act, "reason": stg.description}
                 # Nothing craftable yet — gather materials
-                print("[Agent] DUSK/NIGHT: Need fire materials, gathering resource")
+                logger.warning("DUSK/NIGHT: Need fire materials, gathering")
                 return {"action": "gather_resource", "reason": stg.description}
 
         return None
