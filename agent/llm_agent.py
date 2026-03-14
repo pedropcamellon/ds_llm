@@ -6,13 +6,14 @@ All I/O, HTTP, parsing, and memory concerns are delegated to injected collaborat
 (see main.py for wiring). This class only contains the decision loop.
 """
 
+import logging
 import random
 import time
 
 from action_parser import ActionParser
 from action_writer import ActionWriter
 from conversation_log import ConversationLog
-from goal_manager import GoalManager, StateFieldError, _require_field, Urgency
+from goal_manager import GoalManager, Urgency
 from action_planner import (
     ActionPlanner as GoalPlanner,
 )  # TODO GoalPlanner alias kept for attribute names
@@ -22,7 +23,10 @@ from models import ActionOption, GameState
 from ollama_client import OllamaClient
 from prompt import build_prompt
 from state_reader import StateReader
+from state_manager import StateFieldError, require_field
 from world_tracker import WorldTracker
+
+logger = logging.getLogger(__name__)
 
 # Available exploration directions for fallback actions
 _EXPLORE_DIRECTIONS = ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]
@@ -82,11 +86,11 @@ class DSAIAgent:
         """Read game state, apply emergency overrides, call LLM, write action."""
         state = self.state_reader.read()
         if not state:
-            print("[Agent] Cannot read game state, exploring...")
+            logger.warning("Cannot read game state, exploring randomly")
             return self._emit(self._random_explore_action("No game state available"))
 
         if not self.state_reader.has_changed(state):
-            print("[Agent] State unchanged, skipping decision")
+            logger.debug("State unchanged, skipping decision")
             if self._last_action:
                 self._last_action_changed = False
             return None
@@ -94,6 +98,7 @@ class DSAIAgent:
         self._last_action_changed = True if self._last_action else None
 
         if self.state_reader.is_game_over(state):
+            logger.info("Game over - clearing memory and waiting for new world")
             self.memory.clear()
             self.memory.add("You died. Cleared stale memory.", "system")
             self.inventory_tracker.reset()
@@ -103,10 +108,11 @@ class DSAIAgent:
             )
 
         if state.health <= 0:
-            print("[Agent] You died — waiting for new world")
+            logger.info("Health depleted - waiting for respawn")
             return None
 
         if self.state_reader.is_world_reset(state):
+            logger.info("World reset detected - clearing memory")
             self.memory.clear()
             self.memory.add("World reset! Starting fresh.", "system")
             self.inventory_tracker.reset()
@@ -126,11 +132,15 @@ class DSAIAgent:
             override = self._emergency_override(state, inv)
         except StateFieldError as exc:
             print(f"\n{'!' * 60}")
-            print(str(exc))
-            print("[Agent] Emitting random explore. Fix the Lua exporter then resume.")
+
+            logger.error(f"State validation failed: {exc}")
+            logger.error("Fix Lua exporter then resume - emitting random explore")
             print(f"{'!' * 60}\n")
             return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
         if override:
+            logger.info(
+                f"Emergency override: {override['action']} - {override['reason']}"
+            )
             return self._emit(override)
 
         # Compute concrete, specific actions from inventory + live state
@@ -143,10 +153,8 @@ class DSAIAgent:
             stg = self.goal_manager.get_short_term_goal(state, inv)
             goals = self.goal_manager.format_for_prompt(state, inv)
         except StateFieldError as exc:
-            print(f"\n{'!' * 60}")
-            print(str(exc))
-            print("[Agent] Emitting random explore. Fix the Lua exporter then resume.")
-            print(f"{'!' * 60}\n")
+            logger.error(f"Goal manager failed: {exc}")
+            logger.error("Fix Lua exporter then resume - emitting random explore")
             return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
 
         # Bubble preferred actions to the top of the concrete list
@@ -160,6 +168,9 @@ class DSAIAgent:
             ordered: list[ActionOption] = preferred + rest
         else:
             ordered: list[ActionOption] = concrete_actions
+
+        logger.info(f"Day {state.day} {state.phase} - {len(ordered)} valid actions")
+        logger.debug(f"Goals: {goals}")
 
         # Normal path: ask the LLM
         prompt = build_prompt(
