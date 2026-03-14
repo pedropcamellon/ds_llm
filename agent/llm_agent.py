@@ -183,8 +183,18 @@ class DSAIAgent:
             valid_actions=ordered,
             goals=goals,
         )
-        raw = self.llm_client.generate(prompt)
-        action = self.action_parser.parse(raw)
+
+        logger.debug("LLM prompt sent:\n%s", prompt)
+
+        try:
+            raw = self.llm_client.generate(prompt)
+            logger.debug("LLM raw response:\n%s", raw)
+            action = self.action_parser.parse(raw)
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            logger.warning("Falling back to random explore")
+            action = self._random_explore_action("LLM unavailable")
+            raw = None
 
         # Validate: check if the LLM's action+target exists in our offered list
         # Build lookup: action name -> list of ActionOption objects
