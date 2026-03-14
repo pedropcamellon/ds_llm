@@ -95,3 +95,5 @@ or confirm the BT's current action via `action_command.json`.
 - Type hints use built-in generics (`dict`, `list[dict]`, `str | None`) — no `typing.Dict/List/Optional`.
 - Use **`dataclasses`** for internal data structures passed between agent modules (e.g. parsed action, state snapshot).
 - Use **`pydantic`** for validating data from risky/external sources: Ollama API responses, `game_state.json` reads, `action_command.json` writes. Pydantic gives clear field-level errors and safe defaults when the LLM or Lua produces malformed output.
+- **Keep planning docs (main.instructions.md, ARCHITECTURE.md) code-free.** Use prose descriptions and bullet points instead of code snippets. Code examples belong in module docstrings, tests, or separate EXAMPLES.md files. Planning docs should describe *what* and *why*, not *how* (implementation details).
+- Always include date and time in your response footer (e.g.: "---\n**03/12/2026 12:43 PM**")
