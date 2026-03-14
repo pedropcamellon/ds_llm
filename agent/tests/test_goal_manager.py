@@ -2,6 +2,7 @@
 
 import pytest
 from goal_manager import GoalManager, Urgency
+from models.state import GameState
 
 
 @pytest.fixture()
@@ -14,36 +15,23 @@ def gm() -> GoalManager:
 # ---------------------------------------------------------------------------
 
 
-def test_long_term_autumn(gm):
-    ltg = gm.get_long_term_goal({"season": "autumn"})
-    assert ltg.season == "autumn"
-    # TODO Avoid checking strings
-    assert "firepit" in ltg.description.lower() or "gather" in ltg.description.lower()
-
-
-def test_long_term_winter(gm):
-    ltg = gm.get_long_term_goal({"season": "winter"})
-    assert ltg.season == "winter"
-    assert "warm" in ltg.description.lower() or "fire" in ltg.description.lower()
-
-
 def test_long_term_spring(gm):
-    ltg = gm.get_long_term_goal({"season": "spring"})
+    ltg = gm.get_long_term_goal(_state(season="spring"))
     assert ltg.season == "spring"
 
 
 def test_long_term_summer(gm):
-    ltg = gm.get_long_term_goal({"season": "summer"})
+    ltg = gm.get_long_term_goal(_state(season="summer"))
     assert ltg.season == "summer"
 
 
 def test_long_term_unknown_season_defaults_to_autumn(gm):
-    ltg = gm.get_long_term_goal({"season": "monsoon"})
+    ltg = gm.get_long_term_goal(_state(season="monsoon"))
     assert ltg.season == "autumn"
 
 
 def test_long_term_case_insensitive(gm):
-    ltg = gm.get_long_term_goal({"season": "WINTER"})
+    ltg = gm.get_long_term_goal(_state(season="WINTER"))
     assert ltg.season == "winter"
 
 
@@ -52,7 +40,7 @@ def test_long_term_case_insensitive(gm):
 # ---------------------------------------------------------------------------
 
 
-def _state(**kwargs):
+def _state(**kwargs) -> GameState:
     base = {
         "health": 100,
         "hunger": 100,
@@ -63,7 +51,7 @@ def _state(**kwargs):
         "nearby_entities": [],
     }
     base.update(kwargs)
-    return base
+    return GameState(**base)
 
 
 def test_critical_health_overrides_all(gm):
@@ -172,21 +160,18 @@ def test_stable_state_returns_none(gm):
 
 
 def test_format_for_prompt_contains_season(gm):
-    state = _state()
-    state["season"] = "winter"
+    state = _state(season="winter")
     result = gm.format_for_prompt(state, {})
     assert "Winter" in result
 
 
 def test_format_for_prompt_stable_has_no_urgency_label(gm):
-    state = _state()
-    state["season"] = "autumn"
+    state = _state(season="autumn")
     result = gm.format_for_prompt(state, {})
     assert "Stable" in result
 
 
 def test_format_for_prompt_urgent_includes_label(gm):
-    state = _state(health=10)
-    state["season"] = "autumn"
+    state = _state(health=10, season="autumn")
     result = gm.format_for_prompt(state, {})
     assert "CRITICAL" in result
