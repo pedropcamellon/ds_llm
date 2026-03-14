@@ -5,6 +5,7 @@ main.py — CLI entry point and dependency-injection wiring.
 Usage:
     uv run main.py
     uv run main.py --model gemma3:1b --interval 8
+    uv run main.py --verbose
 """
 
 import argparse
@@ -17,6 +18,7 @@ from action_planner import ActionPlanner
 from goal_manager import GoalManager
 from inventory_tracker import InventoryTracker
 from llm_agent import DSAIAgent
+from logging_config import configure_logging
 from memory import AgentMemory
 from ollama_client import OllamaClient
 from state_reader import StateReader
@@ -28,7 +30,7 @@ STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 def main():
     parser = argparse.ArgumentParser(description="Run Don't Starve LLM Agent")
     parser.add_argument(
-        "--model", default="llama2", help="Ollama model (default: llama2)"
+        "--model", default="gemma3:1b", help="LLM Model (default: gemma3:1b)"
     )
     parser.add_argument(
         "--url", default="http://localhost:11434", help="Ollama API URL"
@@ -36,7 +38,15 @@ def main():
     parser.add_argument(
         "--interval", type=float, default=5.0, help="Poll interval in seconds"
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+
     args = parser.parse_args()
+
+    configure_logging(verbose=args.verbose)
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
