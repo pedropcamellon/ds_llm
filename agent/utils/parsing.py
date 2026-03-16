@@ -48,19 +48,17 @@ def parse_numbered_choice(response: str, options: list[T]) -> T | None:
 
     # Try extracting first digit from response (handles "1. Build base" format)
     match = re.search(r"\d+", response)
-    if match:
-        choice = int(match.group())
-        if 1 <= choice <= len(options):
-            logger.debug(f"Extracted choice {choice} from '{response}'")
-            return options[choice - 1]
-        else:
-            logger.warning(
-                f"Extracted {choice} from '{response}' but out of range [1-{len(options)}]"
-            )
-            return None
+    if not match:
+        logger.warning(
+            f"Could not parse numbered choice from '{response}' (expected 1-{len(options)})"
+        )
+        return
 
-    # Fallback: could not parse
+    choice = int(match.group())
+    if 1 <= choice <= len(options):
+        logger.debug(f"Extracted choice {choice} from '{response}'")
+        return options[choice - 1]
+
     logger.warning(
-        f"Could not parse numbered choice from '{response}' (expected 1-{len(options)})"
+        f"Extracted {choice} from '{response}' but out of range [1-{len(options)}]"
     )
-    return None
