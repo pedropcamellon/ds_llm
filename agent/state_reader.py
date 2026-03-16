@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from models import GameState
+from state_manager import StateFileError, load_game_state_file
 
 
 class StateReader:
@@ -15,28 +16,23 @@ class StateReader:
         self._last_hash: str | None = None
         self._last_day: int = -1
         self._last_health: float = 100.0
+        self._last_phase: str = ""
+        self._ticks_since_llm: int = 0
 
     def read(self) -> GameState | None:
         """Read and return the current game state, or None on failure."""
-        if not self.state_file.exists():
-            print(f"[StateReader] State file not found: {self.state_file}")
-            return
         try:
-            with open(self.state_file, "r") as f:
-                state_dict = json.load(f)
-                
-                return GameState(**state_dict)
-
-        except json.JSONDecodeError as e:
-            print(f"[StateReader] Invalid JSON: {e}")
-            return None
-        except Exception as e:
-            print(f"[StateReader] Read error: {e}")
-            return None
+            return load_game_state_file(self.state_file)
+        except StateFileError as e:
+            print(f"[StateReader] {e}")
 
     def has_changed(self, state: GameState) -> bool:
         """Return True if state differs from the last seen snapshot."""
-        h = hashlib.md5(json.dumps(state, sort_keys=True).encode()).hexdigest()
+        # Convert Pydantic model to dict for JSON serialization
+        state_dict = (
+            state.model_dump() if hasattr(state, "model_dump") else state.dict()
+        )
+        h = hashlib.md5(json.dumps(state_dict, sort_keys=True).encode()).hexdigest()
         if h != self._last_hash:
             self._last_hash = h
             return True
@@ -59,3 +55,51 @@ class StateReader:
             print("[StateReader] Game over detected — Wilson died!")
         self._last_health = health
         return dead
+
+    def phase_changed(self, state: GameState) -> bool:
+        """Return True if time phase changed (day→dusk→night→day).
+
+        DS phases: day, dusk, night. Transitions happen ~4x per game day.
+        """
+        current = state.phase.lower() if state.phase else "day"
+        changed = current != self._last_phase and self._last_phase != ""
+        if changed:
+            print(f"[StateReader] Phase change: {self._last_phase} → {current}")
+        self._last_phase = current
+        return changed
+
+    def should_call_llm(
+        self, state: GameState, min_ticks: int = 3, force_on_phase: bool = True
+    ) -> tuple[bool, str]:
+        """Decide if LLM should be called this tick.
+
+        Returns (should_call, reason).
+
+        LLM is called when:
+        - Phase changed (day→dusk→night→day) — strategic re-planning
+        - Minimum ticks elapsed since last LLM call — avoid noise
+        - Major event (health critical, new threat) — handled by emergency override
+
+        Args:
+            state: Current game state
+            min_ticks: Minimum ticks between LLM calls (default 3 = ~15s)
+            force_on_phase: Always call LLM on phase change
+        """
+        self._ticks_since_llm += 1
+
+        # Phase change = strategic moment, always re-plan
+        if force_on_phase and self.phase_changed(state):
+            self._ticks_since_llm = 0
+            return True, f"phase_change:{state.phase}"
+
+        # Cooldown: don't call LLM too often
+        if self._ticks_since_llm < min_ticks:
+            return False, f"cooldown:{self._ticks_since_llm}/{min_ticks}"
+
+        # Enough ticks passed, allow LLM call
+        self._ticks_since_llm = 0
+        return True, "tick_interval"
+
+    def reset_llm_cooldown(self) -> None:
+        """Reset the LLM cooldown counter (e.g., after emergency override)."""
+        self._ticks_since_llm = 0
