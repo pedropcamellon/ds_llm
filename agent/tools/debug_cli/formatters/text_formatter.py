@@ -1,22 +1,17 @@
 """
-text_formatter.py — Full text output formatter.
+text_formatter.py — Full text output formatter for agent black-box testing.
 """
 
 import json
-from collections import defaultdict
 
 from .base import OutputFormatter, format_state_summary
 
 
 class TextFormatter(OutputFormatter):
-    """Formats complete pipeline results as human-readable text."""
-
-    def __init__(self, max_actions: int = 20):
-        """Initialize with optional action display limit."""
-        self.max_actions = max_actions
+    """Formats agent decision results as human-readable text."""
 
     def format(self, result, llm_response: dict | None = None) -> str:
-        """Format as full text output with all sections."""
+        """Format agent decision with context."""
         sections = []
 
         # State summary
@@ -24,65 +19,48 @@ class TextFormatter(OutputFormatter):
         sections.append("[STATE SUMMARY]")
         sections.append(format_state_summary(result.state))
 
-        # Goals
+        # Mode and goal
         sections.append("\n" + "=" * 80)
-        sections.append("[GOALS]")
-        sections.append(result.goals_text)
-        if result.short_term_goal:
-            sections.append(
-                f"\nShort-term goal: {result.short_term_goal.description} "
-                f"(urgency: {result.short_term_goal.urgency.name})"
-            )
+        sections.append(f"[AGENT MODE]: {result.mode}")
 
-        # Concrete actions
+        # If LLM mode, show the full decision chain
+        if result.llm_called:
+            sections.append("\n[STRATEGIC LAYER - LLM]")
+            if result.suggested_goals:
+                sections.append("  Goals offered: " + ", ".join(result.suggested_goals))
+            if result.current_goal:
+                sections.append(f"  LLM chose: {result.current_goal}")
+            if result.llm_reason:
+                sections.append(f"  Reason: {result.llm_reason}")
+
+        # GOAP chain (if available)
+        if result.goap_chain:
+            sections.append("\n[TACTICAL LAYER - GOAP]")
+            sections.append(f"  Goal: {result.current_goal}")
+            sections.append("  Plan: " + " → ".join(result.goap_chain))
+        elif result.current_goal:
+            sections.append(f"\n[CURRENT GOAL]: {result.current_goal}")
+
+        # Action decision
         sections.append("\n" + "=" * 80)
-        sections.append(
-            f"[CONCRETE ACTIONS] ({len(result.concrete_actions)} available)"
-        )
+        sections.append("[AGENT DECISION]")
+        if result.action:
+            sections.append(f"  Action: {result.action.get('action')}")
+            if result.action.get('target'):
+                sections.append(f"  Target: {result.action.get('target')}")
+            sections.append(f"  Reason: {result.action.get('reason')}")
+        else:
+            sections.append("  (no action - state unchanged)")
 
-        # Group actions by name
-        grouped_actions: dict[str, list[str | None]] = defaultdict(list)
-        for opt in result.concrete_actions:
-            grouped_actions[opt.action].append(opt.target)
-
-        displayed = 0
-        for action_name, targets in grouped_actions.items():
-            if displayed >= self.max_actions:
-                break
-            valid_targets = [t for t in targets if t is not None]
-            if len(valid_targets) == 0:
-                continue
-            else:
-                targets_str = ", ".join(f'"{t}"' for t in valid_targets)
-                sections.append(
-                    f'  {{"action": "{action_name}", "targets": [{targets_str}]}}'
-                )
-            displayed += 1
-
-        if len(result.concrete_actions) > self.max_actions:
-            sections.append(
-                f"  ... and {len(result.concrete_actions) - self.max_actions} more"
-            )
-
-        # Full prompt
-        sections.append("\n" + "=" * 80)
-        sections.append("[FULL PROMPT]")
-        sections.append(result.prompt_text)
-
-        # LLM response (if provided)
-        if llm_response:
+        # Prompt (if LLM was called and verbose)
+        if result.llm_called and result.prompt_text:
             sections.append("\n" + "=" * 80)
-            sections.append("[LLM RESPONSE]")
+            sections.append("[LLM PROMPT]")
+            sections.append(result.prompt_text)
             
-            # Show error if present
-            if "error" in llm_response:
-                sections.append(f"ERROR: {llm_response['error']}")
-            
-            raw_response = llm_response.get("raw") or ""
-            if raw_response:
-                sections.append(raw_response)
-            
-            sections.append("\n[PARSED ACTION]")
-            sections.append(json.dumps(llm_response.get("action", {}), indent=2))
+            if llm_response:
+                raw_response = llm_response.get("raw") or ""
+                if raw_response:
+                    sections.append(raw_response)
 
         return "\n".join(sections)

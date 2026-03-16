@@ -9,12 +9,10 @@ import sys
 from pathlib import Path
 
 from .formatters import (
-    ActionsFormatter,
     JsonFormatter,
     PromptFormatter,
     TextFormatter,
 )
-from .llm_client import LlmClient
 from .pipeline import DebugPipeline
 from .state_loader import StateLoadError, StateLoader
 
@@ -29,27 +27,37 @@ class DebugCli:
     def _create_parser(self) -> argparse.ArgumentParser:
         """Create argument parser with all options."""
         parser = argparse.ArgumentParser(
-            description="Debug tool: load game state and show decision pipeline"
+            description="Debug tool: run agent as black box on a game state"
         )
         parser.add_argument("state_file", type=Path, help="Path to game_state.json")
-        parser.add_argument(
-            "--actions-only", action="store_true", help="Show only action lists"
+        
+        # Mode selection
+        mode_group = parser.add_mutually_exclusive_group()
+        mode_group.add_argument(
+            "--full", action="store_true", help="Run full decide() (default, respects phase throttling)"
         )
+        mode_group.add_argument(
+            "--llm", action="store_true", help="Force strategic LLM call (ignore throttling)"
+        )
+        mode_group.add_argument(
+            "--goap", action="store_true", help="Force GOAP execution only (no LLM)"
+        )
+        
         parser.add_argument(
-            "--prompt-only", action="store_true", help="Show only the LLM prompt"
+            "--goal", type=str, help="Goal to use with --goap mode (e.g., 'prepare_light')"
+        )
+        
+        # Output formatters
+        parser.add_argument(
+            "--prompt-only", action="store_true", help="Show only the LLM prompt (if called)"
         )
         parser.add_argument(
             "--json", action="store_true", help="Output as machine-readable JSON"
         )
         parser.add_argument(
-            "--with-llm",
-            action="store_true",
-            help="Actually call Ollama and show response",
-        )
-        parser.add_argument(
             "--model",
-            default="llama3.2:latest",
-            help="Ollama model to use (if --with-llm)",
+            default="gemma3:1b",
+            help="Ollama model to use (default: gemma3:1b)",
         )
         return parser
 
@@ -69,21 +77,26 @@ class DebugCli:
             # Load state
             state = StateLoader.load(parsed_args.state_file)
 
-            # Run pipeline
-            pipeline = DebugPipeline()
-            result = pipeline.run(state)
+            # Determine mode
+            if parsed_args.llm:
+                mode = "llm"
+            elif parsed_args.goap:
+                mode = "goap"
+            else:
+                mode = "full"
 
-            # Call LLM if requested
-            llm_response = None
-            if parsed_args.with_llm:
-                llm_client = LlmClient(model=parsed_args.model)
-                llm_response = llm_client.call(result.prompt_text)
+            # Run agent as black box
+            pipeline = DebugPipeline(
+                state_path=parsed_args.state_file,
+                model=parsed_args.model
+            )
+            result = pipeline.run(state, mode=mode, force_goal=parsed_args.goal)
 
             # Select formatter based on flags
             formatter = self._select_formatter(parsed_args)
 
             # Format and print output
-            output = formatter.format(result, llm_response)
+            output = formatter.format(result)
             print(output)
 
             return 0
@@ -102,12 +115,10 @@ class DebugCli:
         """Select appropriate formatter based on CLI flags."""
         if args.json:
             return JsonFormatter()
-        elif args.actions_only:
-            return ActionsFormatter()
         elif args.prompt_only:
             return PromptFormatter()
         else:
-            return TextFormatter(max_actions=20)
+            return TextFormatter()
 
 
 def main(args: list[str] | None = None) -> int:
