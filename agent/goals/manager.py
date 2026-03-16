@@ -11,10 +11,11 @@ It produces:
 import textwrap
 
 from models import GameState
-from state_manager import StateFieldError, require_field
+from state_manager import require_field
+from world_calendar import Season
 
 from goals.models import LongTermGoal, MidTermGoal, ShortTermGoal, Urgency
-from goals.predicates import season_is
+from goals.predicates import season_is, has_structure
 
 # Prefabs that count as a "light source" for the night check
 _FIRE_PREFABS = frozenset(
@@ -29,7 +30,6 @@ _FIRE_PREFABS = frozenset(
         "winterometer",  # not actually light, but fine to ignore
     }
 )
-
 
 class GoalManager:
     """Derives context-aware goals from game state + inventory."""
@@ -89,37 +89,103 @@ class GoalManager:
 
     def get_long_term_goal(self, state: GameState) -> LongTermGoal:
         """Return the season-appropriate long-term goal."""
-        season = require_field(state, "season", str).lower()
-        return self._LONG_TERM.get(season, self._LONG_TERM["autumn"])
+        season_str = require_field(state, "season", str).lower()
+        season = Season(season_str)
+        return self._LONG_TERM.get(season, self._LONG_TERM[Season.AUTUMN])
 
-    def get_mid_term_goal(self, state: GameState, inv: dict[str, int]) -> MidTermGoal:
-        """Return day/season progression context (NOT prescriptive goals).
+    def get_mid_term_goals(
+        self, state: GameState, inv: dict[str, int], limit: int = 3
+    ) -> list[MidTermGoal]:
+        """Return 2-3 mid-term goal options for LLM to choose from.
 
-        Just states where we are in the season cycle — LLM decides priorities.
-        Raises KeyError for unknown seasons (intentional; classified as non-retryable
-        at the run-loop level).
+        Generates context-appropriate tactical options based on:
+        - Missing structures (no science machine → offer "Build base")
+        - Low resources (food < 10 → offer "Stockpile food")
+        - Seasonal prep (autumn → offer "Prepare for winter")
+        - Exploration (always offered as universal option)
+
+        Args:
+            state: Current game state
+            inv: Inventory counts (e.g., {"log": 5, "cooked_meat": 2})
+            limit: Maximum number of goals to return (default: 3)
+
+        Returns:
+            List of 2-3 incomplete mid-term goals with predicates
         """
-        day = require_field(state, "day", int)
-        season = require_field(state, "season", str).lower()
+        season_str = require_field(state, "season", str).lower()
+        season = Season(season_str)
+        goals: list[MidTermGoal] = []
 
-        # Estimate 16 days per season for context
-        SEASON_LENGTH = 16
-        days_in_season = ((day - 1) % (SEASON_LENGTH * 4)) % SEASON_LENGTH + 1
-        days_until_next = SEASON_LENGTH - days_in_season + 1
+        # 1. Base building (if no science machine)
+        if not has_structure("science_machine")(state):
+            goals.append(
+                MidTermGoal(
+                    day_range="",  # Not day-specific
+                    description="Build base with science machine for advanced crafting",
+                    focus_actions=["gather_resource", "craft_item", "explore_map"],
+                    reason="missing_science_machine",
+                    goal_check=has_structure("science_machine"),
+                )
+            )
 
-        next_season = {
-            "autumn": "winter",
-            "winter": "spring",
-            "spring": "summer",
-            "summer": "autumn",
-        }[season]
+        # 2. Seasonal preparation
+        if season == Season.AUTUMN:
+            # Prepare for winter
+            goals.append(
+                MidTermGoal(
+                    day_range="",
+                    description="Prepare for winter (craft thermal stone and gather fuel)",
+                    focus_actions=["gather_resource", "craft_item"],
+                    reason="winter_approaching",
+                    goal_check=lambda s: (
+                        s.season == "winter"
+                    ),  # Complete when winter arrives
+                )
+            )
 
-        return MidTermGoal(
-            day_range=f"Day {day}",
-            description=f"Day {days_in_season}/{SEASON_LENGTH} of {season.capitalize()} (→ {next_season.capitalize()} in ~{days_until_next} days)",
-            focus_actions=[],
-            reason="season progression context",
+        # 3. Food stockpiling (if low food reserves)
+        food_count = sum(
+            count
+            for item, count in inv.items()
+            if any(
+                food_type in item.lower()
+                for food_type in ["meat", "berry", "carrot", "fish"]
+            )
         )
+        if food_count < 10:
+            goals.append(
+                MidTermGoal(
+                    day_range="",
+                    description="Stockpile food reserves for survival",
+                    focus_actions=["gather_resource", "hunt_mob", "cook_food"],
+                    reason="low_food_reserves",
+                    goal_check=lambda s: False,  # Always incomplete (food is ongoing)
+                )
+            )
+
+        # 4. Exploration (always offered as universal option)
+        goals.append(
+            MidTermGoal(
+                day_range="",
+                description="Explore unmapped areas to find resources and biomes",
+                focus_actions=["explore_map"],
+                reason="universal_option",
+                goal_check=lambda s: (
+                    False
+                ),  # Always incomplete (exploration is ongoing)
+            )
+        )
+
+        # Filter to incomplete goals only
+        incomplete_goals = []
+        for g in goals:
+            if g.goal_check and g.goal_check(state):
+                continue
+
+            incomplete_goals.append(g)
+
+        # Limit to requested number (default 3)
+        return incomplete_goals[:limit]
 
     def get_short_term_goal(
         self, state: GameState, inv: dict[str, int]
@@ -205,7 +271,7 @@ class GoalManager:
         Completed goals (where goal_check returns True) are omitted entirely.
         """
         ltg = self.get_long_term_goal(state)
-        mtg = self.get_mid_term_goal(state, inv)
+        mtgs = self.get_mid_term_goals(state, inv)  # Returns list of 2-3 options
         stg = self.get_short_term_goal(state, inv)
 
         lines: list[str] = []
@@ -214,9 +280,13 @@ class GoalManager:
         if not (ltg.goal_check and ltg.goal_check(state)):
             lines.append(f"Long-term ({ltg.season.capitalize()}): {ltg.description}")
 
-        # Only show mid-term if not complete
-        if not (mtg.goal_check and mtg.goal_check(state)):
-            lines.append(f"Mid-term ({mtg.day_range}): {mtg.description}")
+        # Show mid-term goal options (2-3 tactical choices)
+        if mtgs:
+            lines.append("Mid-term options (choose one):")
+            for i, mtg in enumerate(mtgs, 1):
+                lines.append(f"  {i}. {mtg.description}")
+        else:
+            lines.append("Mid-term: No tactical goals available.")
 
         # Only show short-term if exists and not complete
         if stg:
@@ -236,7 +306,7 @@ class GoalManager:
         wrapped text, and stable section labels.
         """
         ltg = self.get_long_term_goal(state)
-        mtg = self.get_mid_term_goal(state, inv)
+        mtgs = self.get_mid_term_goals(state, inv)  # Returns list of 2-3 options
         stg = self.get_short_term_goal(state, inv)
 
         inner = max(width - 4, 40)
@@ -257,8 +327,12 @@ class GoalManager:
         rows.extend(_wrap(ltg.description, indent="  "))
         rows.append("")
 
-        rows.append(f"[MID-TERM] {mtg.day_range}")
-        rows.extend(_wrap(mtg.description, indent="  "))
+        rows.append("[MID-TERM] Options")
+        if mtgs:
+            for i, mtg in enumerate(mtgs, 1):
+                rows.extend(_wrap(f"{i}. {mtg.description}", indent="  "))
+        else:
+            rows.extend(_wrap("No tactical goals.", indent="  "))
         rows.append("")
 
         if stg:

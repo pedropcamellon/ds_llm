@@ -14,11 +14,14 @@ class InstructionsSection(PromptSection):
         self.rules = rules or self._default_rules()
 
     def _default_rules(self) -> str:
-        return """Survive in the wild. Survive as long as possible.
-Always act on the SHORT-TERM GOAL first. If no urgent goal, work toward the LONG-TERM GOAL.
-YOU MUST pick from VALID_ACTIONS (listed at the bottom). Never invent an action.
-Use the exact action name and target from the list.
-If your goal requires something not currently available (e.g. flint not nearby), pick explore — do NOT idle."""
+        return """Survive in the wild. Your task: Review the STATUS, INVENTORY, and recent MEMORY, then choose ONE mid-term goal to pursue.
+The GOALS section lists 2-3 tactical options — pick the number (1, 2, or 3) that best fits the current situation.
+
+Consider:
+- What resources are available nearby?
+- What structures exist or are missing?
+- What season is it and what challenges are coming?
+- What does recent memory suggest about priorities?"""
 
     def render(self, ctx: PromptContext) -> str:
         return self.rules

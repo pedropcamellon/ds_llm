@@ -25,19 +25,19 @@ class PromptBuilder:
         world_history: str = "",
     ) -> str:
         """
-       Build prompt by rendering all sections with shared context.
+        Build prompt by rendering all sections with shared context.
 
-        Args:
-            state: Current game state (Pydantic model)
-            valid_actions: List of ActionOption instances
-            goals: Formatted goals string from GoalManager
-            memory: Recent memory entries from AgentMemory
-            last_action: Action chosen on previous tick (for feedback)
-            last_action_changed: Whether last action had an effect
-            world_history: Recently-seen-but-gone entities summary
+         Args:
+             state: Current game state (Pydantic model)
+             valid_actions: List of ActionOption instances
+             goals: Formatted goals string from GoalManager
+             memory: Recent memory entries from AgentMemory
+             last_action: Action chosen on previous tick (for feedback)
+             last_action_changed: Whether last action had an effect
+             world_history: Recently-seen-but-gone entities summary
 
-        Returns:
-            Final prompt string with sections joined by double newlines
+         Returns:
+             Final prompt string with sections joined by double newlines
         """
         # Build typed context for all sections
         ctx = PromptContext(
@@ -62,31 +62,32 @@ class PromptBuilder:
 
 
 def create_default_builder() -> PromptBuilder:
-    """Factory function that creates PromptBuilder with default sections."""
+    """Factory function that creates PromptBuilder with default sections.
+
+    Prompt structure optimized for two-phase decision making:
+    Phase 1 (mid-term goal selection): Memory → Status → Inventory → Goals
+    Phase 2 (action selection): Add ValidActionsSection when ready
+    """
     from prompt.sections.instructions import InstructionsSection
     from prompt.sections.goals import GoalsSection
+
     # from prompt.sections.feedback import FeedbackSection
     from prompt.sections.status import StatusSection
     from prompt.sections.inventory import InventorySection
-    from prompt.sections.nearby import NearbySection
-    from prompt.sections.threats import ThreatsSection
     from prompt.sections.memory import MemorySection
-    from prompt.sections.world_history import WorldHistorySection
-    from prompt.sections.last_action import LastActionSection
-    from prompt.sections.actions import ValidActionsSection
+    # from prompt.sections.world_history import WorldHistorySection
+    # from prompt.sections.last_action import LastActionSection
+    # from prompt.sections.actions import ValidActionsSection  # TODO: Phase 2 - action selection
 
     sections = [
-        InstructionsSection(),
-        GoalsSection(),
-        StatusSection(),
-        InventorySection(),
-        NearbySection(max_entities=15),
-        ThreatsSection(),
-        # TODO FeedbackSection(),
-        MemorySection(max_entries=8, lookahead=3),
-        WorldHistorySection(),
-        LastActionSection(),
-        ValidActionsSection(),
+        InstructionsSection(),  # System prompt
+        MemorySection(max_entries=6, lookahead=3),  # Recent context (moved up)
+        StatusSection(),  # Current vitals
+        InventorySection(),  # Resources available
+        GoalsSection(),  # Long/mid/short-term goals (includes response format)
+        # WorldHistorySection(),         # Optional: recently-seen entities
+        # LastActionSection(),           # Optional: feedback from last action
+        # ValidActionsSection(),         # Phase 2: Commented out for mid-term goal selection
     ]
 
     return PromptBuilder(sections)

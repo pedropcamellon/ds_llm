@@ -19,11 +19,12 @@ from action_planner import (
 )  # TODO GoalPlanner alias kept for attribute names
 from inventory_tracker import InventoryTracker
 from memory import AgentMemory
-from models import ActionOption, GameState
+from models import GameState
 from ollama_client import OllamaClient
-from prompt import build_prompt
+from prompt import create_default_builder
 from state_reader import StateReader
 from state_manager import StateFieldError, require_field
+from utils.parsing import parse_numbered_choice
 from world_tracker import WorldTracker
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ class DSAIAgent:
         self._last_action_changed: bool | None = (
             None  # did state change after last action?
         )
+        self._current_mid_term_goal: str | None = None  # Description of selected goal
+        self._goal_selection_interval = 20  # Select new goal every N decisions
 
     # ------------------------------------------------------------------
     # Decision logic
@@ -89,13 +92,13 @@ class DSAIAgent:
             logger.warning("Cannot read game state, exploring randomly")
             return self._emit(self._random_explore_action("No game state available"))
 
-        if not self.state_reader.has_changed(state):
-            logger.debug("State unchanged, skipping decision")
-            if self._last_action:
-                self._last_action_changed = False
-            return None
+        # TODO if not self.state_reader.has_changed(state):
+        #     logger.debug("State unchanged, skipping decision")
+        #     if self._last_action:
+        #         self._last_action_changed = False
+        #     return
 
-        self._last_action_changed = True if self._last_action else None
+        # self._last_action_changed = True if self._last_action else None
 
         if self.state_reader.is_game_over(state):
             logger.info("Game over - clearing memory and waiting for new world")
@@ -143,104 +146,121 @@ class DSAIAgent:
             )
             return self._emit(override)
 
-        # Compute concrete, specific actions from inventory + live state
-        # Returns list of ActionOption objects with action/target/reason fields.
-        # PrereqFilter already excludes blocked and redundant actions.
-        concrete_actions = self.goal_planner.get_concrete_actions(inv, state)
+        # Phase 1: Select mid-term goal (every N decisions or if no goal)
+
+        # TODO if (
+        #     self.decision_count % self._goal_selection_interval == 0
+        #     or not self._current_mid_term_goal
+        # ):
+        #     try:
+        self._select_mid_term_goal(state, inv)
+        # except Exception as exc:
+        #     logger.error(f"Mid-term goal selection failed: {exc}")
+        #     logger.warning("Continuing with exploration")
 
         logger.info(f"Day {state.day} {state.phase}")
+        logger.info(f"Current mid-term goal: {self._current_mid_term_goal or 'None'}")
 
-        # Derive goals; preferred_actions bubble relevant variants to the top
-        try:
-            stg = self.goal_manager.get_short_term_goal(state, inv)
-            goals_prompt = self.goal_manager.format_for_prompt(state, inv)
-            goals_cli = self.goal_manager.format_for_cli(state, inv)
-        except StateFieldError as exc:
-            logger.error(f"Goal manager failed: {exc}")
-            logger.error("Fix Lua exporter then resume - emitting random explore")
-            return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
-
-        logger.debug(goals_cli)
-
-        # Bubble preferred actions to the top of the concrete list
-        if stg and stg.preferred_actions:
-            # A preferred prefix matches if the action name matches
-            def _is_preferred(opt: ActionOption) -> bool:
-                return any(opt.action == p.split(":")[0] for p in stg.preferred_actions)
-
-            preferred = [a for a in concrete_actions if _is_preferred(a)]
-            rest = [a for a in concrete_actions if not _is_preferred(a)]
-            action_options_sorted: list[ActionOption] = preferred + rest
-        else:
-            action_options_sorted: list[ActionOption] = concrete_actions
-
-        prompt = build_prompt(
-            state,
-            self.memory.recent(),
-            inv,
-            last_action=self._last_action,
-            last_action_changed=self._last_action_changed,
-            world_history=self.world_tracker.summary_lines(state),
-            valid_actions=action_options_sorted,
-            goals=goals_prompt,
-        )
-
-        logger.debug(f" -- LLM Prompt -- \n{60 * '='}\n{prompt}\n{60 * '='}")
-
-        try:
-            raw = self.llm_client.generate(prompt)
-            logger.debug("LLM raw response:\n%s", raw)
-            action = self.action_parser.parse(raw)
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
-            logger.warning("Falling back to random explore")
-            action = self._random_explore_action("LLM unavailable")
-            raw = None
-
-        # Validate: check if the LLM's action+target exists in our offered list
-        # Build lookup: action name -> list of ActionOption objects
-        actions_by_name: dict[str, list[ActionOption]] = {}
-        for opt in action_options_sorted:
-            actions_by_name.setdefault(opt.action, []).append(opt)
-
-        chosen_action = action["action"]
-        chosen_target = action.get("target")
-
-        # Check if action name is valid
-        if chosen_action not in actions_by_name:
-            logger.info(
-                f"[Agent] INVALID: '{chosen_action}' not in valid_actions — forcing random explore"
-            )
-            self.memory.add(
-                f"Rejected '{chosen_action}' (not in valid actions), forced explore",
-                "system",
-            )
-            action = self._random_explore_action(
-                f"'{chosen_action}' not a valid action"
-            )
-        elif chosen_action in actions_by_name:
-            # Validate target if needed
-            valid_opts = actions_by_name[chosen_action]
-            needs_target = any(opt.target is not None for opt in valid_opts)
-
-            if needs_target and not chosen_target:
-                logger.info(
-                    f"[Agent] INVALID: '{chosen_action}' missing required target — forcing random explore"
-                )
-                self.memory.add(
-                    f"Rejected '{chosen_action}' (missing target), forced explore",
-                    "system",
-                )
-                action = self._random_explore_action(
-                    f"'{chosen_action}' must include a specific target"
-                )
-
-        self.conversation_log.record(prompt, raw or "", action)
-
-        self.memory.add(action["reason"], "llm_reason")
+        # ---- COMMENTED OUT: Phase 2 - Action Selection ----
+        # TODO: Re-enable once Phase 1 (mid-term goal selection) is validated
+        #
+        # # Compute concrete, specific actions from inventory + live state
+        # # Returns list of ActionOption objects with action/target/reason fields.
+        # # PrereqFilter already excludes blocked and redundant actions.
+        # concrete_actions = self.goal_planner.get_concrete_actions(inv, state)
+        #
+        # # Derive goals; preferred_actions bubble relevant variants to the top
+        # try:
+        #     stg = self.goal_manager.get_short_term_goal(state, inv)
+        #     goals_prompt = self.goal_manager.format_for_prompt(state, inv)
+        #     goals_cli = self.goal_manager.format_for_cli(state, inv)
+        # except StateFieldError as exc:
+        #     logger.error(f"Goal manager failed: {exc}")
+        #     logger.error("Fix Lua exporter then resume - emitting random explore")
+        #     return self._emit(self._random_explore_action("STATE BROKEN — PAUSE GAME"))
+        #
+        # logger.debug(goals_cli)
+        #
+        # # Bubble preferred actions to the top of the concrete list
+        # if stg and stg.preferred_actions:
+        #     # A preferred prefix matches if the action name matches
+        #     def _is_preferred(opt: ActionOption) -> bool:
+        #         return any(opt.action == p.split(":")[0] for p in stg.preferred_actions)
+        #
+        #     preferred = [a for a in concrete_actions if _is_preferred(a)]
+        #     rest = [a for a in concrete_actions if not _is_preferred(a)]
+        #     action_options_sorted: list[ActionOption] = preferred + rest
+        # else:
+        #     action_options_sorted: list[ActionOption] = concrete_actions
+        #
+        # prompt = build_prompt(
+        #     state,
+        #     self.memory.recent(),
+        #     inv,
+        #     last_action=self._last_action,
+        #     last_action_changed=self._last_action_changed,
+        #     world_history=self.world_tracker.summary_lines(state),
+        #     valid_actions=action_options_sorted,
+        #     goals=goals_prompt,
+        # )
+        #
+        # logger.debug(f" -- LLM Prompt -- \n{60 * '='}\n{prompt}\n{60 * '='}")
+        #
+        # try:
+        #     raw = self.llm_client.generate(prompt)
+        #     logger.debug("LLM raw response:\n%s", raw)
+        #     action = self.action_parser.parse(raw)
+        # except Exception as e:
+        #     logger.error(f"LLM call failed: {e}")
+        #     logger.warning("Falling back to random explore")
+        #     action = self._random_explore_action("LLM unavailable")
+        #     raw = None
+        #
+        # # Validate: check if the LLM's action+target exists in our offered list
+        # # Build lookup: action name -> list of ActionOption objects
+        # actions_by_name: dict[str, list[ActionOption]] = {}
+        # for opt in action_options_sorted:
+        #     actions_by_name.setdefault(opt.action, []).append(opt)
+        #
+        # chosen_action = action["action"]
+        # chosen_target = action.get("target")
+        #
+        # # Check if action name is valid
+        # if chosen_action not in actions_by_name:
+        #     logger.info(
+        #         f"[Agent] INVALID: '{chosen_action}' not in valid_actions — forcing random explore"
+        #     )
+        #     self.memory.add(
+        #         f"Rejected '{chosen_action}' (not in valid actions), forced explore",
+        #         "system",
+        #     )
+        #     action = self._random_explore_action(
+        #         f"'{chosen_action}' not a valid action"
+        #     )
+        # elif chosen_action in actions_by_name:
+        #     # Validate target if needed
+        #     valid_opts = actions_by_name[chosen_action]
+        #     needs_target = any(opt.target is not None for opt in valid_opts)
+        #
+        #     if needs_target and not chosen_target:
+        #         logger.info(
+        #             f"[Agent] INVALID: '{chosen_action}' missing required target — forcing random explore"
+        #         )
+        #         self.memory.add(
+        #             f"Rejected '{chosen_action}' (missing target), forced explore",
+        #             "system",
+        #         )
+        #         action = self._random_explore_action(
+        #             f"'{chosen_action}' must include a specific target"
+        #         )
+        #
+        # self.conversation_log.record(prompt, raw or "", action)
+        #
+        # self.memory.add(action["reason"], "llm_reason")
 
         self.decision_count += 1
-        return self._emit(action)
+
+        # TODO return self._emit(action)
 
     def run(self, interval: float = 5.0) -> None:
         """Poll decide() every interval seconds until interrupted."""
@@ -266,6 +286,51 @@ class DSAIAgent:
                 # unexpected retryable exceptions.
                 logger.exception(f"Retryable runtime error in decide(): {exc}")
             time.sleep(interval)
+
+    def _select_mid_term_goal(self, state: GameState, inv: dict[str, int]) -> None:
+        """Phase 1: Get mid-term goal options, prompt LLM to choose, store selection."""
+        logger.info("[Phase 1] Selecting mid-term goal...")
+
+        # Get 2-3 mid-term goal options
+        mid_term_goals = self.goal_manager.get_mid_term_goals(state, inv, limit=3)
+
+        if not mid_term_goals:
+            logger.warning("No mid-term goals available, skipping goal selection")
+            return
+
+        # Format goals for prompt (using GoalManager's formatter)
+        goals_prompt = "\n".join(
+            f"  {i}. {g.description}" for i, g in enumerate(mid_term_goals, 1)
+        )
+
+        # Build goal selection prompt (Phase 1 - no actions needed yet)
+        builder = create_default_builder()
+        prompt = builder.build(
+            state=state,
+            valid_actions=[],  # Phase 1: no actions, just goal selection
+            goals=goals_prompt,
+            memory=self.memory.recent(),
+        )
+
+        logger.debug(f"[Goal Selection Prompt]\n{'=' * 60}\n{prompt}\n{'=' * 60}")
+
+        # Call LLM
+        raw_response = self.llm_client.generate(prompt)
+        if not raw_response:
+            raise ValueError("LLM returned empty response")
+
+        logger.info(f"[Phase 1] LLM response: '{raw_response}'")
+
+        # Parse choice
+        selected_goal = parse_numbered_choice(raw_response, mid_term_goals)
+
+        if selected_goal:
+            self._current_mid_term_goal = selected_goal.description
+            logger.info(f"[Phase 1] Selected: {selected_goal.description}")
+            self.memory.add(
+                f"Selected mid-term goal: {selected_goal.description}",
+                "mid_term_goal",
+            )
 
     @staticmethod
     def _is_non_retryable_error(exc: Exception) -> bool:
