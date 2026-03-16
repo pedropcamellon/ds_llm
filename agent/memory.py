@@ -30,9 +30,9 @@ class AgentMemory:
             self._entries.pop(0)
         self._append(entry)
 
-    def recent(self, n: int = 20) -> list[dict]:
+    def recent(self, max_entries: int = 20) -> list[dict]:
         """Return the n most recent entries."""
-        return self._entries[-n:]
+        return self._entries[-max_entries:]
 
     def clear(self) -> None:
         """Clear in-memory entries (does not truncate the file)."""
