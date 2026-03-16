@@ -34,8 +34,8 @@ _FIRE_PREFABS = frozenset(
 class GoalManager:
     """Derives context-aware goals from game state + inventory."""
 
-    _LONG_TERM: dict[str, LongTermGoal] = {
-        "autumn": LongTermGoal(
+    _LONG_TERM: dict[Season, LongTermGoal] = {
+        Season.AUTUMN: LongTermGoal(
             season="autumn",
             description=(
                 "Mild weather. Medium day length. Resources abundant. "
@@ -49,7 +49,7 @@ class GoalManager:
             ],
             goal_check=season_is("winter"),  # Complete when winter arrives
         ),
-        "winter": LongTermGoal(
+        Season.WINTER: LongTermGoal(
             season="winter",
             description=(
                 "Freezing temperatures. Long nights, short days. "
@@ -58,7 +58,7 @@ class GoalManager:
             focus_actions=["gather_resource", "craft_item", "eat_food"],
             goal_check=season_is("spring"),  # Complete when spring arrives
         ),
-        "spring": LongTermGoal(
+        Season.SPRING: LongTermGoal(
             season="spring",
             description=(
                 "Moderate weather. Resources regrow. Rain common. Frogs spawn. "
@@ -72,7 +72,7 @@ class GoalManager:
             ],
             goal_check=season_is("summer"),  # Complete when summer arrives
         ),
-        "summer": LongTermGoal(
+        Season.SUMMER: LongTermGoal(
             season="summer",
             description=(
                 "Scorching heat. Overheating and wildfires common. "
