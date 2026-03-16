@@ -2,6 +2,7 @@
 
 import pytest
 from action_planner import ActionPlanner as GoalPlanner
+from models.state import GameState
 
 
 @pytest.fixture
@@ -9,13 +10,13 @@ def planner():
     return GoalPlanner()
 
 
-_EMPTY_STATE: dict = {
-    "health": 80,
-    "hunger": 80,
-    "sanity": 150,
-    "nearby_entities": [],
-    "threats": [],
-}
+_EMPTY_STATE = GameState(
+    health=80,
+    hunger=80,
+    sanity=150,
+    nearby_entities=[],
+    threats=[],
+)
 
 
 # ── Empty inventory (base get_valid_actions) ──────────────────────────────────
@@ -132,18 +133,17 @@ def test_concrete_no_eat_food_when_no_edibles(planner):
 
 
 def test_concrete_pick_up_item_from_nearby(planner):
-    state = dict(
-        _EMPTY_STATE, nearby_entities=[{"name": "log", "type": "item", "distance": 4}]
-    )
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [{"name": "log", "type": "item", "distance": 4}]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("pick_up_item:log" in a for a in actions)
 
 
 def test_concrete_gather_resource_from_harvestable(planner):
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[{"name": "sapling", "type": "plant", "distance": 6}],
-    )
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [{"name": "sapling", "type": "plant", "distance": 6}]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("gather_resource:twigs" in a for a in actions)
 
@@ -169,7 +169,7 @@ def test_concrete_chop_tree_needs_axe(planner):
 
 
 def test_concrete_hostile_includes_attack_and_run(planner):
-    state = dict(_EMPTY_STATE, threats=[{"name": "spider", "distance": 10}])
+    state = _EMPTY_STATE.model_copy(update={"threats": [{"name": "spider", "distance": 10}]})
     actions = planner.get_concrete_actions({}, state)
     assert any("attack_enemy:spider" in a for a in actions)
     assert any("run_from_enemy" in a for a in actions)
@@ -195,14 +195,14 @@ _NEARBY_NOISE_PLUS_SEEDS = [
 
 def test_seeds_type_other_produces_pickup(planner):
     """seeds with type='other' must appear as pick_up_item despite non-item type."""
-    state = dict(_EMPTY_STATE, nearby_entities=_NEARBY_NOISE_PLUS_SEEDS)
+    state = _EMPTY_STATE.model_copy(update={"nearby_entities": _NEARBY_NOISE_PLUS_SEEDS})
     actions = planner.get_concrete_actions({}, state)
     assert any("pick_up_item:seeds" in a for a in actions)
 
 
 def test_ambient_noise_does_not_produce_pickup(planner):
     """snow, rain, flower, robin etc. must NOT produce any action."""
-    state = dict(_EMPTY_STATE, nearby_entities=_NEARBY_NOISE_PLUS_SEEDS)
+    state = _EMPTY_STATE.model_copy(update={"nearby_entities": _NEARBY_NOISE_PLUS_SEEDS})
     actions = planner.get_concrete_actions({}, state)
     flat = " ".join(actions)
     assert "pick_up_item:snow" not in flat
@@ -212,121 +212,111 @@ def test_ambient_noise_does_not_produce_pickup(planner):
 
 def test_flint_type_other_produces_pickup(planner):
     """flint on the ground has type='other' in real exports."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "other", "name": "flint", "distance": 24.9},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("pick_up_item:flint" in a for a in actions)
 
 
 def test_evergreen_type_harvestable_produces_gather_log(planner):
     """evergreen with type='harvestable' + axe in inventory → gather_resource:log."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "evergreen", "distance": 9.4},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({"axe": 1}, state)
     assert any("gather_resource:log" in a for a in actions)
 
 
 def test_evergreen_blocked_without_axe(planner):
     """evergreen with no axe → gather_resource:log must NOT appear."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "evergreen", "distance": 9.4},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert not any("gather_resource:log" in a for a in actions)
 
 
 def test_loose_log_pickup_no_tool_needed(planner):
     """Loose log on ground (type='other') is pick_up_item without any tool."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "other", "name": "log", "distance": 6.0},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("pick_up_item:log" in a for a in actions)
 
 
 def test_loose_rocks_pickup_no_tool_needed(planner):
     """Loose rocks on ground (type='other') is pick_up_item without any tool."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "other", "name": "rocks", "distance": 8.0},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("pick_up_item:rocks" in a for a in actions)
 
 
 def test_rock_boulder_blocked_without_pickaxe(planner):
     """Standing boulder (rock1) needs pickaxe → gather_resource:rocks absent without it."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "rock1", "distance": 12.0},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert not any("gather_resource:rocks" in a for a in actions)
 
 
 def test_rock_boulder_allowed_with_pickaxe(planner):
     """Standing boulder (rock1) + pickaxe → gather_resource:rocks present."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "rock1", "distance": 12.0},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({"pickaxe": 1}, state)
     assert any("gather_resource:rocks" in a for a in actions)
 
 
 def test_sapling_type_harvestable_produces_gather_twigs(planner):
     """sapling with type='harvestable' → gather_resource:twigs."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "sapling", "distance": 11.5},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("gather_resource:twigs" in a for a in actions)
 
 
 def test_berrybush_type_harvestable_produces_gather_berries(planner):
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "berrybush", "distance": 16.8},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     assert any("gather_resource:berries" in a for a in actions)
 
 
 def test_duplicate_same_yield_deduplicated(planner):
     """Multiple saplings nearby → only ONE gather_resource:twigs entry."""
-    state = dict(
-        _EMPTY_STATE,
-        nearby_entities=[
+    state = _EMPTY_STATE.model_copy(update={
+        "nearby_entities": [
             {"type": "harvestable", "name": "sapling", "distance": 11.5},
             {"type": "harvestable", "name": "sapling", "distance": 17.0},
             {"type": "harvestable", "name": "sapling", "distance": 23.6},
-        ],
-    )
+        ]
+    })
     actions = planner.get_concrete_actions({}, state)
     twigs_actions = [a for a in actions if "gather_resource:twigs" in a]
     assert len(twigs_actions) == 1
@@ -350,7 +340,7 @@ def test_full_realistic_nearby_list(planner):
         {"type": "other", "name": "flint", "distance": 24.9},
         {"type": "harvestable", "name": "rabbithole", "distance": 26.2},
     ]
-    state = dict(_EMPTY_STATE, nearby_entities=nearby)
+    state = _EMPTY_STATE.model_copy(update={"nearby_entities": nearby})
     inv_with_axe = {"axe": 1}
     actions = planner.get_concrete_actions(inv_with_axe, state)
     flat = " ".join(actions)

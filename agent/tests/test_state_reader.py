@@ -4,8 +4,7 @@ import json
 import pytest
 from pathlib import Path
 from state_reader import StateReader
-
-from models import GameState
+from models.state import GameState
 
 
 @pytest.fixture
@@ -19,7 +18,7 @@ def reader(state_file):
 
 
 def _write(state_file: Path, state: GameState) -> None:
-    state_file.write_text(json.dumps(state))
+    state_file.write_text(state.model_dump_json())
 
 
 # ── read ──────────────────────────────────────────────────────────────────────
@@ -30,9 +29,10 @@ def test_read_returns_none_when_file_missing(reader):
 
 
 def test_read_returns_dict(reader, state_file):
-    _write(state_file, GameState(day=1, health=100))
+    _write(state_file, GameState(day=1, health=100, hunger=100, sanity=150))
     result = reader.read()
-    assert result == {"day": 1, "health": 100}
+    assert result["day"] == 1
+    assert result["health"] == 100
 
 
 def test_read_returns_none_on_invalid_json(reader, state_file):

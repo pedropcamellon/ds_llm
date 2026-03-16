@@ -2,8 +2,10 @@
 actions.py — Valid actions section.
 """
 
+import re
 from collections import defaultdict
 
+from chain_planner import get_pickup_hint
 from prompt.sections.base import PromptSection
 from prompt.sections.context import PromptContext
 
@@ -16,7 +18,21 @@ class ValidActionsSection(PromptSection):
         self.instructions = instructions or self._default_instructions()
 
     def _default_instructions(self) -> str:
-    return """Pick ONE action and ONE target from this action's list and reply with JSON using format: {"action":"action_name","target":"chosen_target","reason":"why"}"""
+        return """Pick ONE action and ONE target. Reply with JSON: {"action":"...","target":"...","reason":"..."}"""
+
+    def _extract_distance(self, target: str) -> float:
+        """Extract distance in meters from target string like 'flint (3.2m)'."""
+        match = re.search(r"\((\d+\.?\d*)m\)", target)
+        if match:
+            return float(match.group(1))
+        return float("inf")  # No distance = put at end
+
+    def _extract_item_name(self, target: str) -> str:
+        """Extract base item name from target string like 'flint (3.2m) [CLOSEST]' -> 'flint'."""
+        # Remove distance suffix and tags
+        name = re.sub(r"\s*\([\d.]+m\)", "", target)
+        name = re.sub(r"\s*\[(?:CLOSEST|FARTHEST)\]", "", name)
+        return name.strip().lower()
 
     def render(self, ctx: PromptContext) -> str:
         valid_actions = ctx.current_turn_actions
@@ -35,6 +51,40 @@ class ValidActionsSection(PromptSection):
                 valid_targets = [t for t in targets if t is not None]
                 if not valid_targets:
                     continue
+
+                # Only sort and tag if targets have distances (physical items/entities)
+                has_distances = any(
+                    self._extract_distance(t) != float("inf") for t in valid_targets
+                )
+
+                if has_distances:
+                    # Sort by distance (closest first)
+                    valid_targets.sort(key=self._extract_distance)
+
+                    # Add tags to first and last
+                    tagged_targets = []
+                    for i, target in enumerate(valid_targets):
+                        if len(valid_targets) > 1:
+                            if i == 0:
+                                tagged_targets.append(f"{target} [CLOSEST]")
+                            elif i == len(valid_targets) - 1:
+                                tagged_targets.append(f"{target} [FARTHEST]")
+                            else:
+                                tagged_targets.append(target)
+                        else:
+                            tagged_targets.append(target)
+                    valid_targets = tagged_targets
+
+                    # Add strategic hints for critical materials (pick_up_item only)
+                    if action_name == "pick_up_item":
+                        inventory = ctx.state.get_inventory_dict()
+                        hinted_targets = []
+                        for target in valid_targets:
+                            item_name = self._extract_item_name(target)
+                            chain = get_pickup_hint(item_name, inventory)
+                            hinted_targets.append(target + chain)
+                        valid_targets = hinted_targets
+
                 targets_str = ", ".join(valid_targets)
                 action_lines.append(f"  {action_name}: {targets_str}")
 

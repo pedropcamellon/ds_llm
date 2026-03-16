@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 from inventory_tracker import InventoryTracker
+from models.state import GameState
 
 
 def _make_tracker():
@@ -10,8 +11,8 @@ def _make_tracker():
     return tracker, memory
 
 
-def _state(items: list[str]) -> dict:
-    return {"inventory": items}
+def _state(items: list[str]) -> GameState:
+    return GameState(health=100, hunger=100, sanity=150, inventory=items)
 
 
 # ── _parse ────────────────────────────────────────────────────────────────────

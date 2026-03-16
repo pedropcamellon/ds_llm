@@ -2,10 +2,11 @@
 
 import time
 from world_tracker import WorldTracker
+from models.state import GameState
 
 
-def _state(entities: list[dict]) -> dict:
-    return {"nearby_entities": entities}
+def _state(entities: list[dict]) -> GameState:
+    return GameState(health=100, hunger=100, sanity=150, nearby_entities=entities)
 
 
 def _ent(name: str, type_: str = "other") -> dict:
