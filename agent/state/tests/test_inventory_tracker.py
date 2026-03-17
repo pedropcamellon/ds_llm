@@ -1,7 +1,9 @@
 """Tests for InventoryTracker — inventory parsing and delta logging."""
 
 from unittest.mock import MagicMock
+
 from inventory_tracker import InventoryTracker
+from models.state import GameState
 
 
 def _make_tracker():
@@ -10,40 +12,50 @@ def _make_tracker():
     return tracker, memory
 
 
-def _state(items: list[str]) -> dict:
-    return {"inventory": items}
+def _state(items: list[str] | dict[str, int]) -> GameState:
+    return GameState(
+        day=1,
+        time_of_day=0.5,
+        phase="day",
+        season="autumn",
+        health=100,
+        hunger=100,
+        sanity=100,
+        inventory=items,
+        equipped=None,
+    )
 
 
-# ── _parse ────────────────────────────────────────────────────────────────────
+# ── normalized inventory ─────────────────────────────────────────────────────
 
 
-def test_parse_single_item():
+def test_update_normalizes_single_item():
     tracker, _ = _make_tracker()
-    result = tracker._parse(_state(["axe"]))
+    result = tracker.update(_state(["axe"]))
     assert result == {"axe": 1}
 
 
-def test_parse_stacked_item():
+def test_update_normalizes_stacked_item():
     tracker, _ = _make_tracker()
-    result = tracker._parse(_state(["log x20"]))
+    result = tracker.update(_state(["log x20"]))
     assert result == {"log": 20}
 
 
-def test_parse_mixed_items():
+def test_update_normalizes_mixed_items():
     tracker, _ = _make_tracker()
-    result = tracker._parse(_state(["axe", "log x20", "twigs x5"]))
+    result = tracker.update(_state(["axe", "log x20", "twigs x5"]))
     assert result == {"axe": 1, "log": 20, "twigs": 5}
 
 
-def test_parse_empty_inventory():
+def test_update_accepts_preparsed_inventory_dict():
     tracker, _ = _make_tracker()
-    assert tracker._parse(_state([])) == {}
+    result = tracker.update(_state({"twigs": 7}))
+    assert result == {"twigs": 7}
 
 
-def test_parse_strips_whitespace():
+def test_update_handles_empty_inventory():
     tracker, _ = _make_tracker()
-    result = tracker._parse(_state([" flint "]))
-    assert "flint" in result
+    assert tracker.update(_state([])) == {}
 
 
 # ── update / current ─────────────────────────────────────────────────────────

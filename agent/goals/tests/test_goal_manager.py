@@ -93,6 +93,44 @@ def test_threat_overrides_multiple_urgencies(gm):
     assert "run_from_enemy" in stg.preferred_actions
 
 
+def test_critical_health_overrides_all(gm):
+    state = _state(health=15, hunger=10, phase="night")
+    stg = gm.get_short_term_goal(state, {})
+    assert stg is not None
+    assert stg.urgency == Urgency.CRITICAL
+    assert "eat_food" in stg.preferred_actions
+
+
+def test_threat_returns_critical(gm):
+    state = _state(threats=[{"name": "spider", "distance": 5}])
+    stg = gm.get_short_term_goal(state, {})
+    assert stg is not None
+    assert stg.urgency == Urgency.CRITICAL
+    assert "run_from_enemy" in stg.preferred_actions
+
+
+def test_threat_overrides_low_hunger(gm):
+    state = _state(threats=[{"name": "spider", "distance": 5}], hunger=10)
+    stg = gm.get_short_term_goal(state, {})
+    assert stg.urgency == Urgency.CRITICAL
+    assert "run_from_enemy" in stg.preferred_actions
+
+
+def test_night_no_fire_is_urgent(gm):
+    state = _state(phase="night")
+    stg = gm.get_short_term_goal(state, {})
+    assert stg is not None
+    assert stg.urgency == Urgency.URGENT
+    assert "craft_item:torch" in stg.preferred_actions
+
+
+def test_dusk_no_fire_is_urgent(gm):
+    state = _state(phase="dusk")
+    stg = gm.get_short_term_goal(state, {})
+    assert stg is not None
+    assert stg.urgency == Urgency.URGENT
+
+
 # ── URGENT tier ────────────────────────────────────────────────────────
 
 
