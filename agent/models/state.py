@@ -4,7 +4,7 @@ state.py — Pydantic models for game state data.
 Defines the schema for game state snapshots exported from Don't Starve.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Position(BaseModel):
@@ -67,10 +67,28 @@ class GameState(BaseModel):
     sanity: float = Field(description="Player current sanity")
 
     # Inventory and equipment
-    inventory: list[str] = Field(
-        default_factory=list, description="Item list with counts"
+    inventory: dict[str, int] = Field(
+        default_factory=dict, description="Item counts parsed from Lua list"
     )
     equipped: str | None = Field(default=None, description="Currently equipped item")
+
+    @field_validator("inventory", mode="before")
+    @classmethod
+    def parse_inventory_list(cls, v):
+        """Parse Lua inventory list ["log x20", "axe"] to dict {"log": 20, "axe": 1}."""
+        if isinstance(v, dict):
+            return v  # Already parsed (e.g., from tests)
+        if not isinstance(v, list):
+            return {}
+        
+        result = {}
+        for item in v:
+            if " x" in item:
+                name, _, count = item.rpartition(" x")
+                result[name.strip()] = int(count)
+            else:
+                result[item.strip()] = 1
+        return result
 
     # Current action (from behavior tree)
     current_action: str | None = Field(default=None, description="Active action name")
