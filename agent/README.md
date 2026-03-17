@@ -1,23 +1,69 @@
-# LLM Agent
+# AI Agent
 
-The Python autonomous agent that controls the Don't Starve AI via LLM reasoning.
+This folder contains the external Python-side decision layer for the Don't Starve mod.
 
-## Overview
+It is responsible for reading exported game state, maintaining agent-side memory, evaluating rule-based logic, building prompts, calling Ollama running locally, and selecting or scaffolding higher-level decisions.
 
-This is the decision-making component of DST-AI. It:
+## Current Scope
 
-1. **Monitors game state** from JSON file
-2. **Prepares LLM prompts** with game context + memory
-3. **Calls Ollama API** for LLM inference
-4. **Executes actions** via JSON command file
+The current implementation is centered on high-level decision support, not full autonomous control.
+
+Today, the Python agent primarily provides:
+
+1. State ingestion from the shared `state/` folder
+2. Inventory and world-change tracking across ticks
+3. Emergency survival overrides for critical situations
+4. Long-term and mid-term goal generation
+5. LLM-assisted mid-term goal selection through a locally running Ollama instance
+
+The full low-level action-selection and execution loop is only partially wired at the moment. Some action-planning and action-writing pieces exist in this folder, but the currently active path is focused on goal assistance first.
+
+## Architecture
+
+At a high level, the system works like this:
+
+1. The Don't Starve mod exports world and player state into `state/game_state.json`.
+2. The Python agent polls that state file on an interval.
+3. The agent validates the snapshot and detects resets, death, inventory changes, and world-history changes.
+4. Rule-based logic handles immediate emergencies such as low health, nearby threats, or darkness.
+5. If no emergency override is needed, the goal system derives long-term context and a small set of mid-term options.
+6. A prompt is built from state, memory, and goal options.
+7. Ollama running locally is asked to choose the most appropriate mid-term goal.
+8. The selected goal is stored as active agent context for later decisions.
+
+In other words, the current Python agent is best understood as a state reader plus survival rules plus goal-selection engine, with the LLM currently helping at the mid-term planning layer.
+
+## Main Runtime Components
+
+- `main.py`: CLI entrypoint and dependency wiring
+- `llm_agent.py`: Main orchestrator and decision loop
+- `state_reader.py`: Reads and validates the exported game state
+- `memory.py`: Persistent agent memory stored in JSONL format
+- `inventory_tracker.py`: Tracks inventory snapshots and deltas
+- `world_tracker.py`: Tracks recently seen world context across ticks
+- `goals/`: Long-term, mid-term, and short-term goal logic
+- `prompt/`: Prompt construction for LLM-facing context
+- `ollama_client.py`: Local Ollama HTTP client
+- `action_writer.py`: Command-file output for future or partial execution paths
+
+## Shared Files
+
+The Python agent communicates with the mod through the shared `state/` directory at the repository root.
+
+Important files include:
+
+- `state/game_state.json`: exported game snapshot from Lua
+- `state/action_command.json`: command output channel for the mod
+- `state/agent_memory.jsonl`: persistent agent-side memory log
+- `state/conversation_log.jsonl`: prompt and response trace log
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.13+
-- Ollama (https://ollama.ai)
-- A Don't Starve world with the mod enabled and AI activated (Ctrl+P)
+- Python 3.13
+- Ollama
+- A Don't Starve world with the mod enabled
 
 ### Setup
 
@@ -27,76 +73,43 @@ uv sync
 
 # 2. Install Ollama model
 ollama pull llama2
-ollama pull gemma3:1b
+ollama pull gemma3:1b # very lightweight, good for testing
 # or: ollama pull mistral
 
-# 3. Start Ollama server
-ollama serve
+# 3. Start Ollama
+ollama run llama2
 
-# 4. In another terminal, start agent
-uv run main.py --model llama2
+# 4. Start the Python agent
+uv run main.py --verbose
 ```
 
-## Architecture
+By default the agent connects to `http://localhost:11434`.
 
-```
-1. Watch game_state.json
-   ↓
-2. Build prompt (state + memory + rules)
-   ↓
-3. Call Ollama API
-   ↓
-4. Parse JSON response
-   ↓
-5. Write action_command.json
-   ↓
-Game reads command → Wilson acts
-```
+## Current Decision Loop
 
-## Memory System
+Each tick, the active loop in `llm_agent.py` does the following:
 
-The agent maintains memory of important events:
+1. Read the latest game state
+2. Detect death or world reset and clear stale state when needed
+3. Update memory-facing trackers such as inventory and world history
+4. Apply emergency overrides first
+5. Re-evaluate the active mid-term goal or select a new one
+6. Persist the selected goal and reasoning into memory
+7. Wait for the next interval
 
-- **Decisions made** - What action was chosen and why
-- **Events** - Combat, crafting, discoveries
-- **Observations** - Threats, resources found
-- **World resets** - Detected automatically
-
-Memory is persisted in `state/agent_memory.jsonl` and included in every prompt.
-
-## Actions Supported
-
-The agent can command:
-
-| Category  | Actions                            |
-| --------- | ---------------------------------- |
-| Movement  | move_to_food, explore              |
-| Gathering | chop_tree, mine_rock, pick_up_item |
-| Crafting  | craft_item:<recipe_name>           |
-| Survival  | eat_food, cook_food                |
-| Combat    | attack_enemy, run_from_enemy       |
-| Idle      | idle                               |
+That means the current live path is goal-centric rather than action-centric.
 
 ## Emergency Handling
 
-The agent automatically:
+Before asking the LLM anything, the agent can immediately react to critical situations such as:
 
-- Forces eating when health is low
-- Flees from nearby threats
-- Seeks light when dusk/night approaching
-- Adapts to seasonal changes
+- Very low health
+- Nearby hostile threats
+- Darkness or missing light
+- World reset or player death
 
-## How It Works
+This keeps the safety-critical layer rule-based and fast.
 
-1. **State Monitoring:** Polls `game_state.json` every 5 seconds
-2. **Prompt Building:** Creates detailed context from state + memory
-3. **LLM Reasoning:** Sends prompt to Ollama for inference
-4. **Action Parsing:** Extracts JSON action from LLM response
-5. **Command Write:** Saves action to `action_command.json`
-6. **Memory Update:** Logs decision to persistent memory
-7. **Repeat:** Waits for next decision window
+## Notes On Future Integration
 
-## License
-
-Built on "Artificial Wilson" mod by KingofTown.  
-LLM integration and agent: Public domain / MIT
+This folder already contains pieces for deeper execution, including action parsing, action planning, and command writing. The intended direction is to connect those parts more tightly so high-level goals can drive concrete actions with less manual scaffolding.

@@ -20,6 +20,8 @@ That means the repository includes both mod-facing files at the root and the ext
 
 Most active development work is currently happening under the `agent/` folder. That is where the goal system, prompt building, state models, tests, and LLM or planner-side logic are being developed.
 
+For the Python-side architecture, runtime flow, and agent-specific setup details, see `agent/README.md`.
+
 ## Future Improvements
 
 - Full integration between high-level goal selection and low-level action execution.
