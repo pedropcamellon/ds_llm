@@ -25,9 +25,9 @@ def test_long_term_summer(gm):
     assert ltg.season == "summer"
 
 
-def test_long_term_unknown_season_defaults_to_autumn(gm):
-    ltg = gm.get_long_term_goal(_state(season="monsoon"))
-    assert ltg.season == "autumn"
+def test_long_term_unknown_season_raises_value_error(gm):
+    with pytest.raises(ValueError):
+        gm.get_long_term_goal(_state(season="monsoon"))
 
 
 def test_long_term_case_insensitive(gm):

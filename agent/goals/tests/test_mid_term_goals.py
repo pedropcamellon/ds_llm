@@ -20,7 +20,7 @@ def test_get_mid_term_goals_returns_list():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -43,7 +43,7 @@ def test_mid_term_goals_limited_to_max_three():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -65,7 +65,7 @@ def test_mid_term_goals_limit_parameter():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -95,7 +95,7 @@ def test_mid_term_goals_have_required_fields():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -123,7 +123,7 @@ def test_base_building_offered_when_no_science_machine():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
         nearby_entities=[],  # No science machine
@@ -151,7 +151,7 @@ def test_base_building_not_offered_when_science_machine_exists():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
         nearby_entities=[
@@ -185,7 +185,7 @@ def test_exploration_always_offered():
             health=100,
             hunger=100,
             sanity=100,
-            inventory=[],
+            inventory={},
             equipped=None,
             position={"x": 0, "z": 0},
         ),
@@ -198,7 +198,7 @@ def test_exploration_always_offered():
             health=100,
             hunger=100,
             sanity=100,
-            inventory=[],
+            inventory={},
             equipped=None,
             position={"x": 0, "z": 0},
             nearby_entities=[
@@ -248,6 +248,59 @@ def test_food_stockpile_offered_when_low_food():
     assert has_food_goal
 
 
+def test_gather_basic_resources_offered_early_when_missing_tools():
+    """Early game without tools should offer a bootstrap resource-gathering goal."""
+    gm = GoalManager()
+
+    state = GameState(
+        day=1,
+        time_of_day=0.4,
+        phase="day",
+        season="autumn",
+        health=100,
+        hunger=100,
+        sanity=100,
+        inventory={},
+        equipped=None,
+        position={"x": 0, "z": 0},
+    )
+
+    goals = gm.get_mid_term_goals(state, {})
+
+    assert any(
+        "essential tools" in goal.description.lower()
+        or "basic resources" in goal.description.lower()
+        for goal in goals
+    )
+
+
+def test_hunt_for_meat_offered_when_armed_and_meat_is_low():
+    """If the player has a weapon but little meat, hunting should be a valid option."""
+    
+    from Position
+    
+    gm = GoalManager()
+
+    inv = {"axe": 1, "berries": 1}
+
+    state = GameState(
+        day=12,
+        time_of_day=0.5,
+        phase="day",
+        season="winter",
+        health=100,
+        hunger=90,
+        sanity=100,
+        inventory=inv,
+        equipped="axe",
+        position={"x": 0, "z": 0},
+    )
+
+    goals = gm.get_mid_term_goals(state, inv)
+
+    assert any("meat" in goal.description.lower() for goal in goals)
+
+
 def test_seasonal_prep_offered_in_autumn():
     """Should offer winter preparation goals during autumn."""
     gm = GoalManager()
@@ -260,7 +313,7 @@ def test_seasonal_prep_offered_in_autumn():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -287,7 +340,7 @@ def test_mid_term_goal_predicates_are_callable():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -315,7 +368,7 @@ def test_mid_term_goals_deduplicated():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -340,7 +393,7 @@ def test_incomplete_goals_returned_first():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
         nearby_entities=[
@@ -369,7 +422,7 @@ def test_mid_term_goals_context_changes_with_season():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
@@ -382,7 +435,7 @@ def test_mid_term_goals_context_changes_with_season():
         health=100,
         hunger=100,
         sanity=100,
-        inventory=[],
+        inventory={},
         equipped=None,
         position={"x": 0, "z": 0},
     )
