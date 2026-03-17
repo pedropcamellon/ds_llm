@@ -17,6 +17,7 @@ from goal_manager import GoalManager, Urgency
 from action_planner import (
     ActionPlanner as GoalPlanner,
 )  # TODO GoalPlanner alias kept for attribute names
+from goals.models import ActiveGoal
 from inventory_tracker import InventoryTracker
 from memory import AgentMemory
 from models import GameState
@@ -24,7 +25,7 @@ from ollama_client import OllamaClient
 from prompt import create_default_builder
 from state_reader import StateReader
 from state_manager import StateFieldError, require_field
-from utils.parsing import parse_numbered_choice
+from utils.parsing import parse_goal_choice
 from world_tracker import WorldTracker
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,9 @@ class DSAIAgent:
         self._last_action_changed: bool | None = (
             None  # did state change after last action?
         )
-        self._current_mid_term_goal: str | None = None  # Description of selected goal
+        self._current_mid_term_goal: ActiveGoal | None = (
+            None  # Selected goal with metadata
+        )
         self._goal_selection_interval = 5  # Select new goal every N decisions
 
     # ------------------------------------------------------------------
@@ -146,6 +149,9 @@ class DSAIAgent:
             )
             return self._emit(override)
 
+        # Check goal completion (before selection logic)
+        self._check_goal_completion(state)
+
         # Phase 1: Select mid-term goal (every N decisions or if no goal)
         if (
             self.decision_count % self._goal_selection_interval == 0
@@ -158,7 +164,9 @@ class DSAIAgent:
                 logger.warning("Continuing with exploration")
 
         logger.info(f"Day {state.day} {state.phase}")
-        logger.info(f"Current mid-term goal: {self._current_mid_term_goal or 'None'}")
+        logger.info(
+            f"Current mid-term goal: {self._current_mid_term_goal.goal.description if self._current_mid_term_goal else 'None'}"
+        )
 
         # ---- COMMENTED OUT: Phase 2 - Action Selection ----
         # TODO: Re-enable once Phase 1 (mid-term goal selection) is validated
@@ -320,16 +328,40 @@ class DSAIAgent:
 
         logger.info(f"[Phase 1] LLM response: '{raw_response}'")
 
-        # Parse choice
-        selected_goal = parse_numbered_choice(raw_response, mid_term_goals)
+        # Parse choice and reason
+        selected_goal, reason = parse_goal_choice(raw_response, mid_term_goals)
 
         if selected_goal:
-            self._current_mid_term_goal = selected_goal.description
+            self._current_mid_term_goal = ActiveGoal(
+                goal=selected_goal,
+                selected_day=state.day,
+                selected_phase=state.phase,
+                selection_reason=reason,
+            )
             logger.info(f"[Phase 1] Selected: {selected_goal.description}")
+            logger.info(f"[Phase 1] Reason: {reason}")
             self.memory.add(
-                f"Selected mid-term goal: {selected_goal.description}",
+                f"Selected mid-term goal: {selected_goal.description} (Reason: {reason})",
                 "mid_term_goal",
             )
+
+    def _check_goal_completion(self, state: GameState) -> None:
+        """Check if current mid-term goal is completed and clear it if so.
+
+        Called each decision cycle to detect goal completion via predicates.
+        Logs completion to memory and clears the goal to trigger reselection.
+        """
+        if not self._current_mid_term_goal:
+            return
+
+        goal_obj = self._current_mid_term_goal.goal
+        if goal_obj.goal_check and goal_obj.goal_check(state):
+            logger.info(f"Goal completed: {goal_obj.description}")
+            self.memory.add(
+                f"Completed mid-term goal: {goal_obj.description}",
+                "mid_term_goal_completed",
+            )
+            self._current_mid_term_goal = None  # Clear to trigger reselection
 
     @staticmethod
     def _is_non_retryable_error(exc: Exception) -> bool:

@@ -13,4 +13,8 @@ class GoalsSection(PromptSection):
         return super().should_render(ctx) and bool(ctx.goals)
 
     def render(self, ctx: PromptContext) -> str:
-        return f"[GOALS]\n  {ctx.goals}\n[/GOALS]\n\nPick ONE mid-term goal option by responding the goal number in the list; e.g.: 2"
+        return (
+            f"[GOALS]\n  {ctx.goals}\n[/GOALS]\n\n"
+            f"Pick ONE mid-term goal by responding with the goal number and your full reasoning for choosing it. "
+            f"Example response: '2 - Need to prepare for winter before it arrives'"
+        )

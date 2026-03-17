@@ -11,6 +11,7 @@ from typing import Callable
 
 # Type alias for predicates (avoid circular import by using TYPE_CHECKING)
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from models.state import GameState
 
@@ -50,3 +51,17 @@ class LongTermGoal:
     description: str
     focus_actions: list[str] = field(default_factory=list)
     goal_check: Predicate = None
+
+
+@dataclass
+class ActiveGoal:
+    """Wrapper for a selected mid-term goal with selection metadata.
+
+    Tracks when the goal was selected to enable timeout-based reselection
+    and completion analytics.
+    """
+
+    goal: MidTermGoal
+    selected_day: int  # Game day when goal was selected
+    selected_phase: str  # Phase when selected ("day", "dusk", "night")
+    selection_reason: str = ""  # LLM's explanation for choosing this goal

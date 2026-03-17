@@ -19,8 +19,10 @@ class InventoryTracker:
         self._prev = None
 
     def update(self, state: GameState) -> dict[str, int]:
-        """Parse inventory from state, log any deltas, return current counts."""
-        current = self._parse(state)
+        """
+        Get inventory from state, log any deltas, return current counts.
+        """
+        current = state.inventory
         if self._prev is not None:  # skip delta on very first tick
             self._log_delta(current)
         self._prev = current
@@ -33,18 +35,6 @@ class InventoryTracker:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse(state: GameState) -> dict[str, int]:
-        """Convert ["log x20", "axe"] -> {"log": 20, "axe": 1}."""
-        result: dict[str, int] = {}
-        for item in state.inventory:
-            if " x" in item:
-                name, _, count = item.rpartition(" x")
-                result[name.strip()] = int(count)
-            else:
-                result[item.strip()] = 1
-        return result
 
     def _log_delta(self, current: dict[str, int]) -> None:
         if self._prev is None:

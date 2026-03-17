@@ -62,3 +62,54 @@ def parse_numbered_choice(response: str, options: list[T]) -> T | None:
     logger.warning(
         f"Extracted {choice} from '{response}' but out of range [1-{len(options)}]"
     )
+    return None
+
+
+def parse_goal_choice(response: str, goals: list[T]) -> tuple[T, str] | tuple[None, None]:
+    """Parse goal choice with reason from LLM response.
+    
+    Expects response format: "<number> - <reason>" or "<number> because <reason>"
+    
+    Args:
+        response: Raw LLM output (e.g., "2 - Need to prepare for winter")
+        goals: List of available goal options
+    
+    Returns:
+        Tuple of (selected_goal, reason) if valid, (None, None) if parsing fails
+    
+    Examples:
+        >>> goals = [goal1, goal2, goal3]
+        >>> parse_goal_choice("2 - Winter is coming", goals)
+        (goal2, "Winter is coming")
+        >>> parse_goal_choice("1 because low on food", goals)
+        (goal1, "low on food")
+        >>> parse_goal_choice("3: Need to explore", goals)
+        (goal3, "Need to explore")
+    """
+    if not goals:
+        logger.warning("No goals available for parsing")
+        return None, None
+    
+    # Extract number (first digit sequence)
+    num_match = re.search(r"(\d+)", response)
+    if not num_match:
+        logger.warning(f"Could not find goal number in '{response}'")
+        return None, None
+    
+    choice = int(num_match.group(1))
+    if not (1 <= choice <= len(goals)):
+        logger.warning(f"Goal number {choice} out of range [1-{len(goals)}]")
+        return None, None
+    
+    selected_goal = goals[choice - 1]
+    
+    # Extract reason (text after separator: -, because, :, etc.)
+    reason_match = re.search(r"(?:\d+)\s*(?:-|because|:|–|—)\s*(.+)", response, re.IGNORECASE)
+    if reason_match:
+        reason = reason_match.group(1).strip()
+        logger.info(f"Selected goal {choice}: {reason}")
+        return selected_goal, reason
+    
+    # No reason found - just return the goal with empty reason
+    logger.warning(f"Selected goal {choice} but no reason provided in '{response}'")
+    return selected_goal, ""
