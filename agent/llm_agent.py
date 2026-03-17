@@ -63,7 +63,7 @@ class DSAIAgent:
             None  # did state change after last action?
         )
         self._current_mid_term_goal: str | None = None  # Description of selected goal
-        self._goal_selection_interval = 20  # Select new goal every N decisions
+        self._goal_selection_interval = 5  # Select new goal every N decisions
 
     # ------------------------------------------------------------------
     # Decision logic
@@ -147,16 +147,15 @@ class DSAIAgent:
             return self._emit(override)
 
         # Phase 1: Select mid-term goal (every N decisions or if no goal)
-
-        # TODO if (
-        #     self.decision_count % self._goal_selection_interval == 0
-        #     or not self._current_mid_term_goal
-        # ):
-        #     try:
-        self._select_mid_term_goal(state, inv)
-        # except Exception as exc:
-        #     logger.error(f"Mid-term goal selection failed: {exc}")
-        #     logger.warning("Continuing with exploration")
+        if (
+            self.decision_count % self._goal_selection_interval == 0
+            or not self._current_mid_term_goal
+        ):
+            try:
+                self._select_mid_term_goal(state, inv)
+            except Exception as exc:
+                logger.error(f"Mid-term goal selection failed: {exc}")
+                logger.warning("Continuing with exploration")
 
         logger.info(f"Day {state.day} {state.phase}")
         logger.info(f"Current mid-term goal: {self._current_mid_term_goal or 'None'}")
