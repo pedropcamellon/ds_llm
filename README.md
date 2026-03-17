@@ -1,8 +1,12 @@
-# DontStarve-AI: Hybrid Don't Starve Decision Agent
+# DontStarveAI: Hybrid Don't Starve Decision Agent
 
 **A general AI playground for Don't Starve, combining rule-based logic, goal systems, and LLM-assisted planning.**
 
-Current implementation status:
+Gameplay Screenshot:
+
+![Gameplay Screenshot](./ds_gameplay.jpg)
+
+## Current Implementation Status
 
 - The agent currently provides long-term and mid-term goal assistance.
 - Mid-term goal selection is rule-guided and can be assisted by the LLM.
