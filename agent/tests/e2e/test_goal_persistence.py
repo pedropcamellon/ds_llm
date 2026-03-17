@@ -10,8 +10,9 @@ Tests the complete goal lifecycle:
 
 import pytest
 from unittest.mock import Mock, patch
-from models import GameState
+from models import GameState, NearbyEntity
 from goals.models import MidTermGoal
+from goals.predicates import has_item_count, has_structure
 from llm_agent import DSAIAgent
 
 
@@ -23,7 +24,7 @@ class TestGoalPersistence:
         agent, mocks = agent_with_mocks
         
         # First decision: Select goal
-        mocks['llm_client'].generate.return_value = "2"
+        mocks['llm_client'].generate.return_value = "2 - Testing goal persistence"
         mocks['state_reader'].read.return_value = GameState(
             day=1, phase="day", season="autumn",
             health=150, hunger=100, sanity=200
@@ -33,7 +34,9 @@ class TestGoalPersistence:
         
         # Verify goal selected
         assert agent._current_mid_term_goal is not None
-        assert agent._current_mid_term_goal_obj is not None
+        assert agent._current_mid_term_goal.goal is not None
+        assert agent._current_mid_term_goal.selected_day == 1
+        assert agent._current_mid_term_goal.selected_phase == "day"
         original_goal = agent._current_mid_term_goal
         
         # Next 4 decisions: Goal should persist (interval=5)
@@ -43,7 +46,7 @@ class TestGoalPersistence:
             
             # Verify goal NOT reselected
             assert agent._current_mid_term_goal == original_goal
-            assert agent._current_mid_term_goal_obj is not None
+            assert agent._current_mid_term_goal is not None
         
         # Verify LLM only called once (selection, not persistence)
         assert mocks['llm_client'].generate.call_count == 1
@@ -54,7 +57,7 @@ class TestGoalPersistence:
         agent._goal_selection_interval = 3  # Short interval for testing
         
         # First selection
-        mocks['llm_client'].generate.return_value = "1"
+        mocks['llm_client'].generate.return_value = "1 - Testing timeout reselection"
         mocks['state_reader'].read.return_value = GameState(
             day=1, phase="day", season="autumn",
             health=150, hunger=100, sanity=200
@@ -71,7 +74,7 @@ class TestGoalPersistence:
         assert agent._current_mid_term_goal == first_goal  # Still first goal
         
         # 3rd decision triggers timeout (decision_count=3, interval=3)
-        mocks['llm_client'].generate.return_value = "2"  # Different choice
+        mocks['llm_client'].generate.return_value = "2 - New goal after timeout"  # Different choice
         mocks['state_reader'].has_changed.return_value = True
         agent.decide()  # decision_count=4 (but check is on decision_count % interval)
         
@@ -89,48 +92,151 @@ class TestGoalPersistence:
         """Completed goal should trigger immediate reselection."""
         agent, mocks = agent_with_mocks
         
-        # Create completable goal
+        # Create completable goal and fallback goal
         completable_goal = MidTermGoal(
             day_range="",
             description="Gather 10 twigs",
             focus_actions=["gather_resource"],
             reason="test_goal",
-            goal_check=lambda s: s.inventory and s.inventory.get("twigs", 0) >= 10
+            goal_check=has_item_count("twigs", 10)  # Proper predicate
+        )
+        fallback_goal = MidTermGoal(
+            day_range="",
+            description="Explore map",
+            focus_actions=["explore"],
+            reason="exploration",
+            goal_check=lambda s: False  # Never completes
         )
         
-        # Mock goal manager to return test goal
-        with patch.object(agent.goal_manager, 'get_mid_term_goals', return_value=[completable_goal]):
-            mocks['llm_client'].generate.return_value = "1"
-            mocks['state_reader'].read.return_value = GameState(
-                day=1, phase="day", season="autumn",
-                health=150, hunger=100, sanity=200,
-                inventory={"twigs": 5}  # Not completed yet
-            )
-            
-            agent.decide()
-            
-            # Verify goal selected
-            assert agent._current_mid_term_goal_obj == completable_goal
-            assert agent._current_mid_term_goal is not None
-            
-            # Next cycle: Goal completed (10 twigs)
-            mocks['state_reader'].read.return_value = GameState(
-                day=1, phase="day", season="autumn",
-                health=150, hunger=100, sanity=200,
-                inventory={"twigs": 10}  # NOW completed
-            )
-            mocks['state_reader'].has_changed.return_value = True
-            
-            agent.decide()
-            
-            # Verify goal cleared (completion detected)
-            assert agent._current_mid_term_goal_obj is None
-            assert agent._current_mid_term_goal is None
-            
-            # Verify completion logged to memory
-            memory_entries = [e for e in agent.memory._entries if e.get("source") == "mid_term_goal_completed"]
-            assert len(memory_entries) == 1
-            assert "Gather 10 twigs" in memory_entries[0]["text"]
+        # Phase 1: Select completable goal
+        mocks['goal_manager'].get_mid_term_goals.return_value = [completable_goal, fallback_goal]
+        mocks['llm_client'].generate.return_value = "1 - Testing completion detection"
+        mocks['state_reader'].read.return_value = GameState(
+            day=1, phase="day", season="autumn",
+            health=150, hunger=100, sanity=200,
+            inventory={"twigs": 5}  # Not completed yet
+        )
+        
+        agent.decide()
+        
+        # Verify goal selected
+        assert agent._current_mid_term_goal is not None
+        assert agent._current_mid_term_goal.goal == completable_goal
+        
+        # Phase 2: Complete goal → triggers reselection
+        mocks['llm_client'].generate.return_value = "2 - Switching to fallback goal"  # Pick fallback goal
+        mocks['state_reader'].read.return_value = GameState(
+            day=1, phase="day", season="autumn",
+            health=150, hunger=100, sanity=200,
+            inventory={"twigs": 10}  # NOW completed
+        )
+        mocks['state_reader'].has_changed.return_value = True
+        
+        agent.decide()
+        
+        # Verify completion was detected and new goal selected
+        assert agent._current_mid_term_goal is not None
+        assert agent._current_mid_term_goal.goal == fallback_goal
+        
+        # Verify completion logged to memory
+        memory_entries = [e for e in agent.memory._entries if e.get("source") == "mid_term_goal_completed"]
+        assert len(memory_entries) == 1
+        assert "Gather 10 twigs" in memory_entries[0]["text"]
+
+    def test_completion_checked_every_cycle(self, agent_with_mocks):
+        """Completion predicate should be checked every decide() cycle, not just during selection."""
+        agent, mocks = agent_with_mocks
+        agent._goal_selection_interval = 20  # Long interval - won't reselect naturally
+        
+        # Create goal that completes when gold >= 3
+        completable_goal = MidTermGoal(
+            day_range="",
+            description="Gather gold for science machine",
+            focus_actions=["gather_resource"],
+            reason="need_gold",
+            goal_check=has_item_count("gold", 3)
+        )
+        fallback_goal = MidTermGoal(
+            day_range="",
+            description="Explore for resources",
+            focus_actions=["explore"],
+            reason="exploration",
+            goal_check=lambda s: False
+        )
+        
+        mocks['goal_manager'].get_mid_term_goals.return_value = [completable_goal, fallback_goal]
+        
+        # Cycle 1: Select goal with gold=0
+        mocks['llm_client'].generate.return_value = "1 - Need gold for science machine"
+        mocks['state_reader'].read.return_value = GameState(
+            day=1, phase="day", season="autumn",
+            health=150, hunger=100, sanity=200,
+            inventory={"gold": 0}
+        )
+        agent.decide()
+        assert agent._current_mid_term_goal.goal == completable_goal
+        
+        # Cycle 2: gold=1 (not complete yet, goal persists)
+        mocks['state_reader'].read.return_value = GameState(
+            day=1, phase="day", season="autumn",
+            health=150, hunger=100, sanity=200,
+            inventory={"gold": 1}
+        )
+        agent.decide()
+        assert agent._current_mid_term_goal.goal == completable_goal  # Still active
+        
+        # Cycle 3: gold=2 (still not complete, goal persists)
+        mocks['state_reader'].read.return_value = GameState(
+            day=1, phase="dusk", season="autumn",
+            health=150, hunger=100, sanity=200,
+            inventory={"gold": 2}
+        )
+        agent.decide()
+        assert agent._current_mid_term_goal.goal == completable_goal  # Still active
+        
+        # Cycle 4: gold=3 (COMPLETE! Should detect immediately and reselect)
+        mocks['llm_client'].generate.return_value = "2 - Switching to exploration after gold collected"
+        mocks['state_reader'].read.return_value = GameState(
+            day=1, phase="dusk", season="autumn",
+            health=150, hunger=100, sanity=200,
+            inventory={"gold": 3}  # COMPLETED!
+        )
+        agent.decide()
+        
+        # Verify completion detected immediately (not waiting for timeout)
+        assert agent._current_mid_term_goal.goal == fallback_goal  # New goal selected
+        
+        # Verify completion logged
+        memory_entries = [e for e in agent.memory._entries if e.get("source") == "mid_term_goal_completed"]
+        assert len(memory_entries) == 1
+        assert "Gather gold" in memory_entries[0]["text"]
+        
+        # Verify LLM called twice: once for initial selection, once for reselection after completion
+        assert mocks['llm_client'].generate.call_count == 2
+
+    def test_selection_reason_captured_and_logged(self, agent_with_mocks):
+        """Selection reason from LLM should be captured in ActiveGoal and logged to memory."""
+        agent, mocks = agent_with_mocks
+        
+        # LLM responds with goal number and reason
+        llm_response = "2 - Food reserves are critically low and winter is approaching"
+        mocks['llm_client'].generate.return_value = llm_response
+        mocks['state_reader'].read.return_value = GameState(
+            day=5, phase="day", season="autumn",
+            health=150, hunger=100, sanity=200
+        )
+        
+        agent.decide()
+        
+        # Verify goal selected with reason captured
+        assert agent._current_mid_term_goal is not None
+        assert agent._current_mid_term_goal.selection_reason == "Food reserves are critically low and winter is approaching"
+        
+        # Verify reason logged to memory
+        memory_entries = [e for e in agent.memory._entries if e.get("source") == "mid_term_goal"]
+        assert len(memory_entries) == 1
+        assert "Stockpile food reserves" in memory_entries[0]["text"]
+        assert "Food reserves are critically low" in memory_entries[0]["text"]
 
 
 class TestGoalSelectionFailures:
@@ -180,7 +286,6 @@ class TestGoalSelectionFailures:
             agent.decide()
             
             # Verify no goal selected
-            assert agent._current_mid_term_goal_obj is None
             assert agent._current_mid_term_goal is None
 
 
@@ -198,7 +303,7 @@ class TestGoalLifecycleIntegration:
             description="Build science machine",
             focus_actions=["gather_resource", "craft_item"],
             reason="missing_structure",
-            goal_check=lambda s: "science_machine" in (s.nearby_entities or [])
+            goal_check=has_structure("science_machine")  # Proper predicate
         )
         goal2 = MidTermGoal(
             day_range="",
@@ -209,7 +314,7 @@ class TestGoalLifecycleIntegration:
         )
         
         with patch.object(agent.goal_manager, 'get_mid_term_goals', return_value=[goal1, goal2]):
-            mocks['llm_client'].generate.return_value = "1"  # Choose goal1
+            mocks['llm_client'].generate.return_value = "1 - Building science machine first"  # Choose goal1
             mocks['state_reader'].read.return_value = GameState(
                 day=1, phase="day", season="autumn",
                 health=150, hunger=100, sanity=200,
@@ -217,7 +322,8 @@ class TestGoalLifecycleIntegration:
             )
             
             agent.decide()
-            assert agent._current_mid_term_goal_obj == goal1
+            assert agent._current_mid_term_goal is not None
+            assert agent._current_mid_term_goal.goal == goal1
             
             # Phase 2: Persist across 3 cycles
             for i in range(3):
@@ -228,34 +334,28 @@ class TestGoalLifecycleIntegration:
                     nearby_entities=[]  # Not completed yet
                 )
                 agent.decide()
-                assert agent._current_mid_term_goal_obj == goal1  # Still goal1
+                assert agent._current_mid_term_goal.goal == goal1  # Still goal1
             
-            # Phase 3: Complete goal
+            # Phase 3: Complete goal → reselect immediately
+            mocks['llm_client'].generate.return_value = "2 - Exploring after science machine built"  # Choose goal2 after completion
             mocks['state_reader'].read.return_value = GameState(
                 day=5, phase="day", season="autumn",
                 health=150, hunger=100, sanity=200,
-                nearby_entities=["science_machine"]  # Completed!
+                nearby_entities=[NearbyEntity(name="science_machine", type="structure", distance=5.0)]  # Completed!
             )
             mocks['state_reader'].has_changed.return_value = True
             agent.decide()
             
-            # Verify completion cleared goal
-            assert agent._current_mid_term_goal_obj is None
-            
-            # Phase 4: Reselect new goal
-            mocks['llm_client'].generate.return_value = "2"  # Choose goal2
-            mocks['state_reader'].has_changed.return_value = True
-            agent.decide()
-            
-            # Verify new goal selected
-            assert agent._current_mid_term_goal_obj == goal2
+            # Verify completion detected and NEW goal selected
+            assert agent._current_mid_term_goal is not None
+            assert agent._current_mid_term_goal.goal == goal2  # Should be goal2 now
 
     def test_timeout_with_incomplete_goal_logs_warning(self, agent_with_mocks):
         """Timeout on incomplete goal should log warning."""
         agent, mocks = agent_with_mocks
         agent._goal_selection_interval = 2  # Very short
         
-        mocks['llm_client'].generate.return_value = "1"
+        mocks['llm_client'].generate.return_value = "1 - Testing timeout warning"
         mocks['state_reader'].read.return_value = GameState(
             day=1, phase="day", season="autumn",
             health=150, hunger=100, sanity=200
@@ -276,7 +376,6 @@ class TestGoalLifecycleIntegration:
 @pytest.fixture
 def agent_with_mocks(tmp_path):
     """Create DSAIAgent with all dependencies mocked."""
-    from pathlib import Path
     from memory import AgentMemory
     
     # Real memory (for testing memory entries)
