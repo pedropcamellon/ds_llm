@@ -40,6 +40,7 @@ llm_action_executor ◄─action_command.json──  │ parse JSON response
 ## JSON State Contract
 
 `state/game_state.json` fields the LLM prompt depends on:
+
 ```json
 { "day", "time_of_day", "season", "health", "hunger", "sanity",
   "inventory": ["log x20", "axe"],   ← prefab + stack count
@@ -50,6 +51,7 @@ llm_action_executor ◄─action_command.json──  │ parse JSON response
   "action_log": [{"result":"failed","action":"chop","reason":"no axe"}],
   "memory_log" }
 ```
+
 `speech_log` and `action_log` are **accumulator buffers** — all events since the last export
 are collected in Lua lists and flushed into the JSON each cycle, then cleared. This ensures
 no transient event (speech bubble, action result) is lost between 5-second export intervals.
@@ -84,7 +86,6 @@ or confirm the BT's current action via `action_command.json`.
 - Emergency overrides (health < 20, threats, nightfall) are hardcoded in
   `DSAIAgent.decide()` and fire **before** the LLM call to keep latency low.
 - `llm_action_executor.lua` polling / dispatch is **not yet implemented**.
-
 
 ## Rules
 
