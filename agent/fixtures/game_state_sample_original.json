@@ -1,0 +1,310 @@
+{
+    "inventory": [
+        "twigs x7"
+    ],
+    "speech_log": [],
+    "season": "spring",
+    "day": 0,
+    "hunger": 67,
+    "is_raining": false,
+    "phase": "day",
+    "sanity": 170,
+    "threats": [],
+    "time_of_day": 0,
+    "memory_log": [],
+    "temperature": 12,
+    "health": 150,
+    "position": {
+        "z": -68.9,
+        "x": 201.5
+    },
+    "action_log": [],
+    "nearby_entities": [
+        {
+            "type": "other",
+            "name": "snow",
+            "distance": 0
+        },
+        {
+            "type": "other",
+            "name": "rain",
+            "distance": 0
+        },
+        {
+            "type": "other",
+            "name": "twigs",
+            "distance": 0
+        },
+        {
+            "type": "harvestable",
+            "name": "grass",
+            "distance": 5.6
+        },
+        {
+            "type": "other",
+            "name": "robin",
+            "distance": 7
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 8.2
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 9.3
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 10.2
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 10.7
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 11.3
+        },
+        {
+            "type": "harvestable",
+            "name": "grass",
+            "distance": 12.8
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 13.6
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 13.6
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 14.2
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 15.2
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 16.2
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 16.7
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 16.8
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 17.1
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 18.5
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 19.1
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 19.2
+        },
+        {
+            "type": "other",
+            "name": "carrot_planted",
+            "distance": 20
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 20.4
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 21
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 21.1
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 21.3
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 21.4
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 21.9
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 22
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 22.2
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 22.3
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 23
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 23.4
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 23.5
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 24.2
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 25.4
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 25.6
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 25.6
+        },
+        {
+            "type": "other",
+            "name": "carrot_planted",
+            "distance": 25.9
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 26.1
+        },
+        {
+            "type": "harvestable",
+            "name": "grass",
+            "distance": 26.3
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 26.5
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 26.5
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 26.6
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 26.8
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 26.9
+        },
+        {
+            "type": "other",
+            "name": "flower",
+            "distance": 27
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 27.5
+        },
+        {
+            "type": "harvestable",
+            "name": "grass",
+            "distance": 27.7
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 28.2
+        },
+        {
+            "type": "harvestable",
+            "name": "blue_mushroom",
+            "distance": 28.4
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 28.7
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 28.9
+        },
+        {
+            "type": "harvestable",
+            "name": "evergreen",
+            "distance": 29.1
+        },
+        {
+            "type": "harvestable",
+            "name": "sapling",
+            "distance": 29.5
+        },
+        {
+            "type": "other",
+            "name": "flower",
+            "distance": 29.5
+        }
+    ],
+    "equipped": "none"
+}
