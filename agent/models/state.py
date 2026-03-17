@@ -150,18 +150,13 @@ class GameState(BaseModel):
 
     def get_inventory_dict(self) -> dict[str, int]:
         """
-        Parse inventory list into item counts.
+        Return a copy of the normalized inventory counts.
 
-        Converts ["log x20", "axe"] -> {"log": 20, "axe": 1}
+        The field validator already converts Lua inventory lists such as
+        ["log x20", "axe"] into {"log": 20, "axe": 1}. Re-parsing here would
+        drop stack counts once inventory is stored as a dict.
         """
-        result: dict[str, int] = {}
-        for item in self.inventory:
-            if " x" in item:
-                name, _, count = item.rpartition(" x")
-                result[name.strip()] = int(count)
-            else:
-                result[item.strip()] = 1
-        return result
+        return dict(self.inventory)
 
     def has_item(self, item_name: str) -> bool:
         """Check if inventory contains an item."""
