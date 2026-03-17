@@ -324,9 +324,16 @@ class DSAIAgent:
         # Call LLM
         raw_response = self.llm_client.generate(prompt)
         if not raw_response:
-            raise ValueError("LLM returned empty response")
+            raw_response = self._mock_goal_selection_response(mid_term_goals)
+            logger.warning(
+                f"Ollama unavailable or timed out; using fallback response: '{raw_response}'"
+            )
+            self.memory.add(
+                "Ollama unavailable or timed out; used fallback mid-term goal selection.",
+                "mid_term_goal_fallback",
+            )
 
-        logger.info(f"[Phase 1] LLM response: '{raw_response}'")
+        logger.info(f"LLM raw response: '{raw_response}'")
 
         # Parse choice and reason
         selected_goal, reason = parse_goal_choice(raw_response, mid_term_goals)
@@ -338,8 +345,11 @@ class DSAIAgent:
                 selected_phase=state.phase,
                 selection_reason=reason,
             )
-            logger.info(f"[Phase 1] Selected: {selected_goal.description}")
-            logger.info(f"[Phase 1] Reason: {reason}")
+
+            logger.info(
+                f"Selected mid-term goal: {selected_goal.description}. -- Reason: {reason}"
+            )
+
             self.memory.add(
                 f"Selected mid-term goal: {selected_goal.description} (Reason: {reason})",
                 "mid_term_goal",
@@ -373,6 +383,21 @@ class DSAIAgent:
         if isinstance(exc, (KeyError, ValueError, NameError)):
             return True
         return False
+
+    @staticmethod
+    def _mock_goal_selection_response(mid_term_goals: list[ActiveGoal] | list) -> str:
+        """Return a deterministic mocked goal-choice response.
+
+        GoalManager already returns the options in priority order, so choosing the
+        first entry preserves current policy without introducing a second planner.
+        """
+        if not mid_term_goals:
+            return "1 - Fallback goal selection unavailable"
+
+        return (
+            "1 - Ollama unavailable or timed out, selecting the highest-priority "
+            "mid-term goal from the current ordering"
+        )
 
     # ------------------------------------------------------------------
     # Private helpers
