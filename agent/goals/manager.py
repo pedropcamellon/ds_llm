@@ -31,6 +31,7 @@ _FIRE_PREFABS = frozenset(
     }
 )
 
+
 class GoalManager:
     """Derives context-aware goals from game state + inventory."""
 
@@ -38,8 +39,9 @@ class GoalManager:
         Season.AUTUMN: LongTermGoal(
             season="autumn",
             description=(
-                "Mild weather. Medium day length. Resources abundant. "
-                "Winter approaches — will bring freezing temps and food scarcity."
+                "Mild weather. Resources are abundant. Establish a base, secure "
+                "essential tools, and start stockpiling warm gear, fuel, and food "
+                "before winter freezing and scarcity arrive."
             ),
             focus_actions=[
                 "gather_resource",
@@ -52,8 +54,9 @@ class GoalManager:
         Season.WINTER: LongTermGoal(
             season="winter",
             description=(
-                "Freezing temperatures. Long nights, short days. "
-                "Food scarce. Cold is lethal. Spring will bring relief."
+                "Freezing temperatures and long nights make survival expensive. "
+                "Prioritize warmth, fuel, and reliable food reserves while hunting "
+                "or gathering only when the risk is worth it."
             ),
             focus_actions=["gather_resource", "craft_item", "eat_food"],
             goal_check=season_is("spring"),  # Complete when spring arrives
@@ -61,8 +64,9 @@ class GoalManager:
         Season.SPRING: LongTermGoal(
             season="spring",
             description=(
-                "Moderate weather. Resources regrow. Rain common. Frogs spawn. "
-                "Summer heat approaches — will bring overheating risk."
+                "Resources regrow and expansion is safer. Rebuild supplies, explore "
+                "new biomes, and improve permanent structures before summer heat "
+                "and wildfire pressure arrive."
             ),
             focus_actions=[
                 "gather_resource",
@@ -75,8 +79,9 @@ class GoalManager:
         Season.SUMMER: LongTermGoal(
             season="summer",
             description=(
-                "Scorching heat. Overheating and wildfires common. "
-                "Stay cool or die. Autumn relief is coming."
+                "Scorching heat and wildfires punish overextension. Stay cool, keep "
+                "only the supplies you need close at hand, and use safer windows to "
+                "gather or explore until autumn relief returns."
             ),
             focus_actions=["gather_resource", "craft_item", "explore"],
             goal_check=season_is("autumn"),  # Complete when autumn arrives
@@ -89,8 +94,10 @@ class GoalManager:
 
     def get_long_term_goal(self, state: GameState) -> LongTermGoal:
         """Return the season-appropriate long-term goal."""
+
         season_str = require_field(state, "season", str).lower()
         season = Season(season_str)
+
         return self._LONG_TERM.get(season, self._LONG_TERM[Season.AUTUMN])
 
     def get_mid_term_goals(
@@ -112,80 +119,154 @@ class GoalManager:
         Returns:
             List of 2-3 incomplete mid-term goals with predicates
         """
+        if limit <= 0:
+            raise ValueError("limit must be a positive integer")
+
         season_str = require_field(state, "season", str).lower()
         season = Season(season_str)
-        goals: list[MidTermGoal] = []
+        candidate_goals: list[tuple[int, MidTermGoal]] = []
 
-        # 1. Base building (if no science machine)
+        essential_tools_ready = self._has_essential_tools(inv)
+        food_count = self._food_reserve_count(inv)
+        meat_count = inv.get("meat", 0) + inv.get("cooked_meat", 0)
+        has_weapon = inv.get("spear", 0) > 0 or inv.get("axe", 0) > 0
+
+        # 1. Early-game bootstrap from the old strategic goal catalog.
+        if state.day <= 3 and not essential_tools_ready:
+            candidate_goals.append(
+                (
+                    2,
+                    MidTermGoal(
+                        day_range="",
+                        description=(
+                            "Gather basic resources to craft essential tools "
+                            "(axe, pickaxe, torch)"
+                        ),
+                        focus_actions=["gather_resource", "explore_map", "craft_item"],
+                        reason="missing_essential_tools",
+                        goal_check=lambda s: (
+                            s.inventory.get("axe", 0) > 0
+                            and s.inventory.get("pickaxe", 0) > 0
+                            and s.inventory.get("cutgrass", 0) > 0
+                        ),
+                    ),
+                )
+            )
+
+        # 2. Build a real base if no science machine is established yet.
         if not has_structure("science_machine")(state):
-            goals.append(
-                MidTermGoal(
-                    day_range="",  # Not day-specific
-                    description="Build base with science machine for advanced crafting",
-                    focus_actions=["gather_resource", "craft_item", "explore_map"],
-                    reason="missing_science_machine",
-                    goal_check=has_structure("science_machine"),
+            candidate_goals.append(
+                (
+                    4,
+                    MidTermGoal(
+                        day_range="",
+                        description=(
+                            "Build a base with a science machine and reliable fire "
+                            "for safer crafting"
+                        ),
+                        focus_actions=[
+                            "gather_resource",
+                            "craft_item",
+                            "build_structure",
+                        ],
+                        reason="missing_science_machine",
+                        goal_check=has_structure("science_machine"),
+                    ),
                 )
             )
 
-        # 2. Seasonal preparation
-        if season == Season.AUTUMN:
-            # Prepare for winter
-            goals.append(
-                MidTermGoal(
-                    day_range="",
-                    description="Prepare for winter (craft thermal stone and gather fuel)",
-                    focus_actions=["gather_resource", "craft_item"],
-                    reason="winter_approaching",
-                    goal_check=lambda s: (
-                        s.season == "winter"
-                    ),  # Complete when winter arrives
+        # 3. Seasonal preparation borrowed from the old strategic catalog.
+        if season == Season.AUTUMN and state.day >= 5:
+            candidate_goals.append(
+                (
+                    3,
+                    MidTermGoal(
+                        day_range="",
+                        description=(
+                            "Prepare for winter by crafting warm gear and building a "
+                            "fuel stockpile"
+                        ),
+                        focus_actions=["gather_resource", "craft_item", "chop_tree"],
+                        reason="winter_approaching",
+                        goal_check=lambda s: (
+                            s.season.lower() == "winter"
+                            or (
+                                (
+                                    s.inventory.get("thermal_stone", 0) > 0
+                                    or s.inventory.get("winter_hat", 0) > 0
+                                )
+                                and s.inventory.get("log", 0) >= 8
+                            )
+                        ),
+                    ),
                 )
             )
 
-        # 3. Food stockpiling (if low food reserves)
-        food_count = sum(
-            count
-            for item, count in inv.items()
-            if any(
-                food_type in item.lower()
-                for food_type in ["meat", "berry", "carrot", "fish"]
+        # 4. Food reserve building remains a core mid-term survival objective.
+        if food_count < 5 or state.hunger < 100:
+            candidate_goals.append(
+                (
+                    6,
+                    MidTermGoal(
+                        day_range="",
+                        description="Stockpile food reserves for survival",
+                        focus_actions=["gather_resource", "hunt_mob", "cook_food"],
+                        reason="low_food_reserves",
+                        goal_check=lambda s: self._food_reserve_count(s.inventory)
+                        >= 10,
+                    ),
+                )
             )
+
+        # 5. If equipped to fight, offer meat hunting as a specific variant.
+        if has_weapon and meat_count < 3:
+            candidate_goals.append(
+                (
+                    5,
+                    MidTermGoal(
+                        day_range="",
+                        description="Hunt passive animals for meat to stabilize food supplies",
+                        focus_actions=["hunt_mob", "attack_enemy", "cook_food"],
+                        reason="low_meat_reserves",
+                        goal_check=lambda s: (
+                            s.inventory.get("meat", 0)
+                            + s.inventory.get("cooked_meat", 0)
+                        )
+                        >= 3,
+                    ),
+                )
+            )
+
+        explore_goal = MidTermGoal(
+            day_range="",
+            description="Explore unmapped areas to find resources and biomes",
+            focus_actions=["explore_map"],
+            reason="universal_option",
+            goal_check=lambda s: False,
         )
-        if food_count < 10:
-            goals.append(
-                MidTermGoal(
-                    day_range="",
-                    description="Stockpile food reserves for survival",
-                    focus_actions=["gather_resource", "hunt_mob", "cook_food"],
-                    reason="low_food_reserves",
-                    goal_check=lambda s: False,  # Always incomplete (food is ongoing)
-                )
-            )
 
-        # 4. Exploration (always offered as universal option)
-        goals.append(
-            MidTermGoal(
-                day_range="",
-                description="Explore unmapped areas to find resources and biomes",
-                focus_actions=["explore_map"],
-                reason="universal_option",
-                goal_check=lambda s: (
-                    False
-                ),  # Always incomplete (exploration is ongoing)
-            )
-        )
-
-        # Filter to incomplete goals only
-        incomplete_goals = []
-        for g in goals:
-            if g.goal_check and g.goal_check(state):
+        prioritized_goals: list[MidTermGoal] = []
+        seen_descriptions: set[str] = set()
+        for _, goal in sorted(candidate_goals, key=lambda item: item[0]):
+            if goal.goal_check and goal.goal_check(state):
                 continue
+            if goal.description in seen_descriptions:
+                continue
+            prioritized_goals.append(goal)
+            seen_descriptions.add(goal.description)
 
-            incomplete_goals.append(g)
+        if limit == 1:
+            if prioritized_goals:
+                return [prioritized_goals[0]]
+            return [explore_goal]
 
-        # Limit to requested number (default 3)
-        return incomplete_goals[:limit]
+        selected_goals = prioritized_goals[: max(limit - 1, 0)]
+        if len(selected_goals) < limit:
+            selected_goals.append(explore_goal)
+        else:
+            selected_goals[-1] = explore_goal
+
+        return selected_goals[:limit]
 
     def get_short_term_goal(
         self, state: GameState, inv: dict[str, int]
@@ -355,6 +436,19 @@ class GoalManager:
 
     def _fire_nearby(self, state: GameState) -> bool:
         return any(e.name in _FIRE_PREFABS for e in (state.nearby_entities or []))
+
+    @staticmethod
+    def _has_essential_tools(inv: dict[str, int]) -> bool:
+        return inv.get("axe", 0) > 0 and inv.get("pickaxe", 0) > 0
+
+    @staticmethod
+    def _food_reserve_count(inv: dict[str, int]) -> int:
+        food_keywords = ("meat", "berry", "carrot", "fish", "seeds")
+        return sum(
+            count
+            for item, count in inv.items()
+            if any(food_type in item.lower() for food_type in food_keywords)
+        )
 
     def _fire_goal(
         self, state: GameState, inv: dict[str, int], phase: str
