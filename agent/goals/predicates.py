@@ -69,13 +69,11 @@ def sanity_below(threshold: float) -> Predicate:
 def has_item(item_name: str) -> Predicate:
     """Returns predicate that checks if item_name is in inventory.
     
-    Handles inventory format: ["log x10", "torch x1", "twigs x5"]
-    Matches partial strings (e.g. "log" matches "log x10").
+    Works with dict inventory: {"log": 20, "torch": 1}
+    Checks if item exists (count > 0).
     """
     def check(state: GameState) -> bool:
-        if state.inventory is None:
-            return False
-        return any(item_name in item for item in state.inventory)
+        return state.inventory.get(item_name, 0) > 0
     
     return check
 
@@ -83,12 +81,20 @@ def has_item(item_name: str) -> Predicate:
 def has_any_item(item_names: list[str]) -> Predicate:
     """Returns predicate that checks if ANY of the items are in inventory."""
     def check(state: GameState) -> bool:
-        if state.inventory is None:
-            return False
-        return any(
-            any(item_name in inv_item for inv_item in state.inventory)
-            for item_name in item_names
-        )
+        return any(state.inventory.get(name, 0) > 0 for name in item_names)
+    
+    return check
+
+
+def has_item_count(item_name: str, min_count: int) -> Predicate:
+    """Returns predicate that checks if item count >= min_count.
+    
+    Examples:
+        has_item_count("twigs", 10)  # Need at least 10 twigs
+        has_item_count("gold", 5)    # Need at least 5 gold
+    """
+    def check(state: GameState) -> bool:
+        return state.inventory.get(item_name, 0) >= min_count
     
     return check
 
