@@ -3,7 +3,7 @@ utils/tests/test_parsing.py — Unit tests for generic parsing utilities.
 """
 
 import pytest
-from utils.parsing import parse_numbered_choice
+from utils.parsing import parse_numbered_choice, parse_goal_choice
 from goals.models import MidTermGoal
 
 
@@ -155,3 +155,61 @@ class TestEdgeCases:
         ]
         result = parse_numbered_choice("3", two_goals)
         assert result is None
+
+
+# ============================================================================
+# Test parse_goal_choice (goals with reasons)
+# ============================================================================
+
+
+class TestParseGoalChoice:
+    """Test parse_goal_choice with number + reason extraction."""
+
+    def test_parse_with_dash_separator(self, sample_goals):
+        """Response '2 - Need food' → should return (goal2, 'Need food')."""
+        goal, reason = parse_goal_choice("2 - Need food for winter", sample_goals)
+        assert goal == sample_goals[1]
+        assert reason == "Need food for winter"
+
+    def test_parse_with_because(self, sample_goals):
+        """Response '1 because low resources' → should extract reason."""
+        goal, reason = parse_goal_choice("1 because low on resources", sample_goals)
+        assert goal == sample_goals[0]
+        assert reason == "low on resources"
+
+    def test_parse_with_colon(self, sample_goals):
+        """Response '3: Exploration needed' → should extract reason."""
+        goal, reason = parse_goal_choice("3: Need to find resources", sample_goals)
+        assert goal == sample_goals[2]
+        assert reason == "Need to find resources"
+
+    def test_parse_number_only_no_reason(self, sample_goals):
+        """Response '2' with no reason → should return (goal2, '')."""
+        goal, reason = parse_goal_choice("2", sample_goals)
+        assert goal == sample_goals[1]
+        assert reason == ""
+
+    def test_parse_out_of_range(self, sample_goals):
+        """Response '5 - Invalid' → should return (None, None)."""
+        goal, reason = parse_goal_choice("5 - Too high", sample_goals)
+        assert goal is None
+        assert reason is None
+
+    def test_parse_no_number(self, sample_goals):
+        """Response 'I choose exploration' → should return (None, None)."""
+        goal, reason = parse_goal_choice("I choose exploration", sample_goals)
+        assert goal is None
+        assert reason is None
+
+    def test_parse_empty_goals_list(self):
+        """Empty goals list → should return (None, None)."""
+        goal, reason = parse_goal_choice("1 - Any reason", [])
+        assert goal is None
+        assert reason is None
+
+    def test_parse_multiline_reason(self, sample_goals):
+        """Extract reason from multiline response (takes first line)."""
+        goal, reason = parse_goal_choice("2 - Winter is coming\nNeed to prepare", sample_goals)
+        assert goal == sample_goals[1]
+        # Should extract full reason (regex captures rest of line)
+        assert "Winter is coming" in reason
